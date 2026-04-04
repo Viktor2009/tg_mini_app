@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+from typing import Any
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.exceptions import TelegramBadRequest
@@ -41,6 +42,25 @@ from tg_mini_app.telegram_keyboards import (
     operator_handoff_delivery_markup,
     payment_reply_markup,
 )
+
+
+def _resolve_operator_notify_chat_id(
+    meta: dict[str, Any],
+    configured_operator_chat_id: int | None,
+) -> int:
+    """
+    Куда слать служебные сообщения оператору.
+
+    Сначала id из meta (кто согласовал в боте), иначе OPERATOR_CHAT_ID из .env —
+    иначе после согласования через веб-панель без записи в meta кнопка
+    «Передан в доставку» не доходила.
+    """
+    meta_op = int(meta.get("operator_chat_id") or 0)
+    if meta_op:
+        return meta_op
+    if configured_operator_chat_id is not None:
+        return configured_operator_chat_id
+    return 0
 
 
 async def _configure_menu_and_commands(bot: Bot, settings: Settings) -> None:
@@ -603,7 +623,10 @@ async def main() -> None:
                 await query.answer(pay_err, show_alert=True)
                 return
 
-            operator_chat_id = int(order.meta.get("operator_chat_id") or 0)
+            notify_op = _resolve_operator_notify_chat_id(
+                order.meta,
+                settings.operator_chat_id,
+            )
 
             if action == "cash":
                 order.payment_type = "cash"
@@ -614,9 +637,9 @@ async def main() -> None:
                     chat_id=order.customer_tg_id,
                     text=f"Отлично! Заказ #{order.id} активен. Оплата: наличные.",
                 )
-                if operator_chat_id:
+                if notify_op:
                     await bot.send_message(
-                        chat_id=operator_chat_id,
+                        chat_id=notify_op,
                         text=(
                             f"Заказ #{order.id}: клиент выбрал наличные.\n"
                             "Нажмите, когда передадите заказ в доставку:"
@@ -643,9 +666,9 @@ async def main() -> None:
                         f"Заказ #{order.id} активен."
                     ),
                 )
-                if operator_chat_id:
+                if notify_op:
                     await bot.send_message(
-                        chat_id=operator_chat_id,
+                        chat_id=notify_op,
                         text=(
                             f"Заказ #{order.id}: оплата картой "
                             f"(заглушка, {order.total_amount} ₽).\n"
