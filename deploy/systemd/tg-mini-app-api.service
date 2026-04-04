@@ -1,0 +1,16 @@
+[Unit]
+Description=tg_mini_app FastAPI (uvicorn)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/srv/tg_mini_app
+EnvironmentFile=/srv/tg_mini_app/.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/srv/tg_mini_app/.venv/bin/python -m tg_mini_app.api
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
