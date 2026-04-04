@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import time
 from typing import Any
@@ -43,6 +44,18 @@ from tg_mini_app.telegram_keyboards import (
     payment_reply_markup,
 )
 
+_log = logging.getLogger(__name__)
+
+
+def _meta_int(meta: dict[str, Any], key: str) -> int:
+    raw = meta.get(key)
+    if raw is None or raw == "":
+        return 0
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
+
 
 def _resolve_operator_notify_chat_id(
     meta: dict[str, Any],
@@ -55,12 +68,39 @@ def _resolve_operator_notify_chat_id(
     иначе после согласования через веб-панель без записи в meta кнопка
     «Передан в доставку» не доходила.
     """
-    meta_op = int(meta.get("operator_chat_id") or 0)
+    meta_op = _meta_int(meta, "operator_chat_id")
     if meta_op:
         return meta_op
     if configured_operator_chat_id is not None:
         return configured_operator_chat_id
     return 0
+
+
+async def _send_operator_handoff_prompt(
+    bot: Bot,
+    *,
+    notify_op: int,
+    order_id: int,
+    detail_line: str,
+) -> None:
+    """Сообщение оператору с кнопкой «Передан в доставку»."""
+    if not notify_op:
+        return
+    try:
+        await bot.send_message(
+            chat_id=notify_op,
+            text=(
+                f"Заказ #{order_id}: {detail_line}\n"
+                "Нажмите, когда передадите заказ в доставку:"
+            ),
+            reply_markup=operator_handoff_delivery_markup(order_id),
+        )
+    except TelegramBadRequest as exc:
+        _log.warning(
+            "Handoff button not delivered to operator chat_id=%s: %s",
+            notify_op,
+            exc,
+        )
 
 
 async def _configure_menu_and_commands(bot: Bot, settings: Settings) -> None:
@@ -175,6 +215,11 @@ def _kb_customer_accept_changes(order_id: int) -> InlineKeyboardMarkup:
 
 async def main() -> None:
     _acquire_singleton_lock()
+    if not logging.root.handlers:
+        logging.basicConfig(
+            level=logging.WARNING,
+            format="%(levelname)s %(name)s %(message)s",
+        )
     settings = get_settings()
     bot = Bot(token=_require_token(settings.bot_token))
     await _configure_menu_and_commands(bot, settings)
@@ -559,7 +604,7 @@ async def main() -> None:
                 await query.answer(stale, show_alert=True)
                 return
 
-            operator_chat_id = int(order.meta.get("operator_chat_id") or 0)
+            operator_chat_id = _meta_int(order.meta, "operator_chat_id")
 
             if action == "accept_change":
                 order.status = OrderStatus.AWAITING_PAYMENT
@@ -637,15 +682,12 @@ async def main() -> None:
                     chat_id=order.customer_tg_id,
                     text=f"Отлично! Заказ #{order.id} активен. Оплата: наличные.",
                 )
-                if notify_op:
-                    await bot.send_message(
-                        chat_id=notify_op,
-                        text=(
-                            f"Заказ #{order.id}: клиент выбрал наличные.\n"
-                            "Нажмите, когда передадите заказ в доставку:"
-                        ),
-                        reply_markup=operator_handoff_delivery_markup(order.id),
-                    )
+                await _send_operator_handoff_prompt(
+                    bot,
+                    notify_op=notify_op,
+                    order_id=order.id,
+                    detail_line="клиент выбрал наличные.",
+                )
                 return
 
             if action == "card":
@@ -666,16 +708,14 @@ async def main() -> None:
                         f"Заказ #{order.id} активен."
                     ),
                 )
-                if notify_op:
-                    await bot.send_message(
-                        chat_id=notify_op,
-                        text=(
-                            f"Заказ #{order.id}: оплата картой "
-                            f"(заглушка, {order.total_amount} ₽).\n"
-                            "Нажмите, когда передадите заказ в доставку:"
-                        ),
-                        reply_markup=operator_handoff_delivery_markup(order.id),
-                    )
+                await _send_operator_handoff_prompt(
+                    bot,
+                    notify_op=notify_op,
+                    order_id=order.id,
+                    detail_line=(
+                        f"оплата картой (заглушка, {order.total_amount} ₽)."
+                    ),
+                )
                 return
 
         await query.answer("Неизвестное действие", show_alert=True)

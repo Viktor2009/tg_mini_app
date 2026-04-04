@@ -59,6 +59,15 @@ class Settings(BaseSettings):
         ),
     )
 
+    @field_validator("operator_chat_id", mode="before")
+    @classmethod
+    def _coerce_operator_chat_id(cls, value: object) -> object:
+        if value is None or value == "":
+            return None
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
     @field_validator("operator_panel_token", mode="before")
     @classmethod
     def _strip_operator_panel_token(cls, value: object) -> object:

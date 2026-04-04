@@ -2,6 +2,8 @@
 
 Один документ с командами для **Windows (ПК)** и **Ubuntu (VPS)**. Проект: `tg_mini_app`, Python **3.12+** (в `pyproject.toml` указано `requires-python = ">=3.12"`).
 
+**Обновить код на GitHub и на сервере с ПК одной командой:** в корне репозитория запустите **`push-and-deploy.cmd`** (нужен SSH на VPS и remote `github` или параметр `-GitRemote`). Подробно и примеры — **раздел 8.5**.
+
 ---
 
 ## 1. Python 3.12 на компьютере (Windows)
@@ -89,6 +91,16 @@ APP_ENV=production
 API_HOST=127.0.0.1
 API_PORT=8000
 ```
+
+### 3.1. Скрипт деплоя с ПК (GitHub + сервер)
+
+После правок кода на Windows:
+
+```powershell
+& C:\tg_mini_app\push-and-deploy.cmd -SshTarget root@77.222.35.130
+```
+
+(Путь к проекту подставьте свой.) Скрипт делает `git push`, по SSH запускает на VPS `deploy/server-update.sh` (pull, pip, перезапуск systemd). Проверка без деплоя: **`-CheckOnly`**. Свой текст коммита: **`-CommitMessage "..."`**. Полная инструкция, типичные ошибки и **`OPERATOR_CHAT_ID`** — **§8.5**.
 
 ---
 
@@ -190,6 +202,8 @@ pkill -f 'tg_mini_app.bot'
 | SSL | `sudo certbot certificates` |
 
 Если кнопки в Telegram «молчат» — почти всегда **не запущен бот** (`python -m tg_mini_app.bot`).
+
+**Кнопка «Передан в доставку» после оплаты** приходит **не клиенту**, а в **чат оператора** с ботом (тот же аккаунт, что в **`OPERATOR_CHAT_ID`** в `.env`). Условия: в `.env` задан **`OPERATOR_CHAT_ID`** (числовой Telegram ID, см. `/id` у бота); оператор **хотя бы раз написал боту** `/start` (иначе Telegram может не доставить сообщение); после смены `.env` перезапустите **сервис бота** на сервере. Если кнопки нет — используйте **`/ship N`** или **`/delivery N`** или веб-панель **«Передан в доставку»**. В логах бота при ошибке доставки будет предупреждение `Handoff button not delivered…`.
 
 ---
 
@@ -466,7 +480,7 @@ $env:GIT_REMOTE = "github"; bash deploy/server-update.sh
 
    ```powershell
    cd C:\tg_mini_app
-   .\push-and-deploy.cmd -SshTarget root@ВАШ_IP
+   .\push-and-deploy.cmd -SshTarget root@77.222.35.130
    ```
 
 3. Проверка окружения **без push и SSH** (диагностика):
