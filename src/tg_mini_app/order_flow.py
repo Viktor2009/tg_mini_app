@@ -74,7 +74,7 @@ def require_pending_operator_for_cancel(status: str) -> str | None:
 
 
 def require_active_for_ship(status: str) -> str | None:
-    """Команда оператора: заказ в пути."""
+    """Команда оператора: передан в доставку (статус out_for_delivery)."""
     if status != OrderStatus.ACTIVE:
         return MSG_STALE_ORDER
     return None

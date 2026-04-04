@@ -35,7 +35,7 @@ const ORDER_STATUS_RU = {
   rejected_by_customer: "Заказ отменён",
   cancelled_by_customer: "Вы отменили заказ до согласования",
   active: "Заказ активен",
-  out_for_delivery: "Заказ в пути",
+  out_for_delivery: "Передан в доставку",
   delivered: "Заказ доставлен",
 };
 

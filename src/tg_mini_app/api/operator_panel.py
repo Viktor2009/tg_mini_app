@@ -80,7 +80,7 @@ STATUS_LABELS_RU: dict[str, str] = {
     OrderStatus.REJECTED_BY_CUSTOMER: "Отклонён (клиент)",
     OrderStatus.CANCELLED_BY_CUSTOMER: "Отменён клиентом",
     OrderStatus.ACTIVE: "Активен",
-    OrderStatus.OUT_FOR_DELIVERY: "В пути",
+    OrderStatus.OUT_FOR_DELIVERY: "Передан в доставку",
     OrderStatus.DELIVERED: "Доставлен",
 }
 
@@ -305,7 +305,10 @@ async def operator_order_action(
         if bot is not None:
             await bot.send_message(
                 chat_id=cid,
-                text=f"Заказ #{order.id} передан курьеру и уже в пути.",
+                text=(
+                    f"Заказ #{order.id} передан в доставку. "
+                    "Ожидайте курьера."
+                ),
             )
         return _redirect_panel(filter_status, ok="1")
 

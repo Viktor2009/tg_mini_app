@@ -5,6 +5,7 @@ import os
 import time
 
 from aiogram import Bot, Dispatcher, F
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandObject
 from aiogram.types import (
     BotCommand,
@@ -36,7 +37,10 @@ from tg_mini_app.order_flow import (
 )
 from tg_mini_app.paths import PROJECT_ROOT
 from tg_mini_app.settings import Settings, get_settings
-from tg_mini_app.telegram_keyboards import payment_reply_markup
+from tg_mini_app.telegram_keyboards import (
+    operator_handoff_delivery_markup,
+    payment_reply_markup,
+)
 
 
 async def _configure_menu_and_commands(bot: Bot, settings: Settings) -> None:
@@ -67,7 +71,14 @@ async def _configure_menu_and_commands(bot: Bot, settings: Settings) -> None:
     if settings.operator_chat_id is not None:
         await bot.set_my_commands(
             [
-                BotCommand(command="ship", description="В пути: /ship N"),
+                BotCommand(
+                    command="ship",
+                    description="Передан в доставку: /ship N",
+                ),
+                BotCommand(
+                    command="delivery",
+                    description="То же: /delivery N",
+                ),
                 BotCommand(
                     command="delivered",
                     description="Вручён клиенту: /delivered N",
@@ -202,8 +213,9 @@ async def main() -> None:
             "/operator — куда уходят согласования\n"
             "/app — ссылка на Mini App\n\n"
             "Оператор (после оплаты заказа):\n"
-            "/ship N — заказ N в пути\n"
-            "/delivered N — заказ N вручён клиенту\n\n"
+            "кнопка «Передан в доставку» в чате или\n"
+            "/ship N и /delivery N — передан в доставку\n"
+            "/delivered N — вручён клиенту\n\n"
             f"Веб-панель: {settings.base_url.rstrip('/')}/operator-panel\n"
             "(логин operator, пароль OPERATOR_PANEL_TOKEN из .env)"
         )
@@ -224,6 +236,7 @@ async def main() -> None:
         await message.answer(f"Mini App: {webapp_url}")
 
     @dp.message(Command("ship"))
+    @dp.message(Command("delivery"))
     async def cmd_ship_order(message: Message, command: CommandObject) -> None:
         if message.from_user is None:
             return
@@ -236,7 +249,7 @@ async def main() -> None:
             return
         parts = (command.args or "").strip().split()
         if len(parts) < 1:
-            await message.answer("Укажите номер заказа: /ship 5")
+            await message.answer("Укажите номер заказа: /ship 5 или /delivery 5")
             return
         try:
             oid = int(parts[0])
@@ -259,10 +272,62 @@ async def main() -> None:
             order.status = OrderStatus.OUT_FOR_DELIVERY
             await session.commit()
 
-        await message.answer(f"Заказ #{oid} отмечен как «в пути».")
+        await message.answer(f"Заказ #{oid} отмечен: передан в доставку.")
         await bot.send_message(
             chat_id=customer_chat,
-            text=f"Заказ #{oid} передан курьеру и уже в пути.",
+            text=(
+                f"Заказ #{oid} передан в доставку. Ожидайте курьера."
+            ),
+        )
+
+    @dp.callback_query(F.data.startswith("opship:"))
+    async def operator_handoff_delivery_cb(query: CallbackQuery) -> None:
+        if query.data is None or query.from_user is None:
+            return
+        parts = query.data.split(":")
+        if len(parts) != 2:
+            await query.answer("Некорректные данные кнопки", show_alert=True)
+            return
+        try:
+            oid = int(parts[1])
+        except ValueError:
+            await query.answer("Некорректный номер заказа", show_alert=True)
+            return
+
+        deny = require_operator_identity(
+            query.from_user.id,
+            settings.operator_chat_id,
+        )
+        if deny is not None:
+            await query.answer(deny, show_alert=True)
+            return
+
+        async with db.session() as session:
+            order = (
+                await session.execute(select(models.Order).where(models.Order.id == oid))
+            ).scalar_one_or_none()
+            if order is None:
+                await query.answer("Заказ не найден", show_alert=True)
+                return
+            err = require_active_for_ship(order.status)
+            if err is not None:
+                await query.answer(f"Нельзя: {err}", show_alert=True)
+                return
+            customer_chat = order.customer_tg_id
+            order.status = OrderStatus.OUT_FOR_DELIVERY
+            await session.commit()
+
+        await query.answer("Передан в доставку")
+        if query.message is not None:
+            try:
+                await query.message.edit_reply_markup(reply_markup=None)
+            except TelegramBadRequest:
+                pass
+        await bot.send_message(
+            chat_id=customer_chat,
+            text=(
+                f"Заказ #{oid} передан в доставку. Ожидайте курьера."
+            ),
         )
 
     @dp.message(Command("delivered"))
@@ -552,7 +617,11 @@ async def main() -> None:
                 if operator_chat_id:
                     await bot.send_message(
                         chat_id=operator_chat_id,
-                        text=f"Заказ #{order.id}: клиент выбрал наличные. Статус: ACTIVE.",
+                        text=(
+                            f"Заказ #{order.id}: клиент выбрал наличные.\n"
+                            "Нажмите, когда передадите заказ в доставку:"
+                        ),
+                        reply_markup=operator_handoff_delivery_markup(order.id),
                     )
                 return
 
@@ -579,8 +648,10 @@ async def main() -> None:
                         chat_id=operator_chat_id,
                         text=(
                             f"Заказ #{order.id}: оплата картой "
-                            f"(заглушка, {order.total_amount} ₽). Статус: ACTIVE."
+                            f"(заглушка, {order.total_amount} ₽).\n"
+                            "Нажмите, когда передадите заказ в доставку:"
                         ),
+                        reply_markup=operator_handoff_delivery_markup(order.id),
                     )
                 return
 

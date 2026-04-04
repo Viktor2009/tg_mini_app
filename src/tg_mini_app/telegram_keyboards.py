@@ -20,3 +20,17 @@ def payment_reply_markup(order_id: int) -> InlineKeyboardMarkup:
             ]
         ]
     )
+
+
+def operator_handoff_delivery_markup(order_id: int) -> InlineKeyboardMarkup:
+    """Одно нажатие вместо /ship N после того, как заказ стал ACTIVE."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Передан в доставку",
+                    callback_data=f"opship:{order_id}",
+                ),
+            ]
+        ],
+    )

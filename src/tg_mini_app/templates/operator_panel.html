@@ -166,7 +166,7 @@
                       <form method="post" action="/operator-panel/orders/{{ o.id }}/action">
                         <input type="hidden" name="filter_status" value="{{ status_filter }}" />
                         <input type="hidden" name="action" value="ship" />
-                        <button type="submit">В пути</button>
+                        <button type="submit" class="primary">Передан в доставку</button>
                       </form>
                     {% elif o.status == "out_for_delivery" %}
                       <form method="post" action="/operator-panel/orders/{{ o.id }}/action">
@@ -191,7 +191,8 @@
         или HTTP Basic (логин <code>operator</code>, пароль =
         <code>OPERATOR_PANEL_TOKEN</code>).
         <a href="/operator-panel/logout" style="color: var(--muted)">Выйти</a>.
-        Команды бота (/ship, /delivered) по-прежнему работают.
+        В боте: кнопка «Передан в доставку» после оплаты клиентом, либо команды
+        <code>/ship N</code>, <code>/delivery N</code> и <code>/delivered N</code>.
       </p>
     </div>
   </body>
