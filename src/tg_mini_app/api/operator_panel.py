@@ -7,7 +7,7 @@ import hmac
 import secrets
 import time
 from typing import Annotated, Any
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from aiogram import Bot
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -23,8 +23,16 @@ from tg_mini_app.order_flow import (
     OrderStatus,
     require_active_for_ship,
     require_active_or_shipping_for_delivered,
+    require_operator_cancel_order,
     require_pending_operator_for_action,
     unlock_cart_if_locked,
+)
+from tg_mini_app.order_meta import (
+    LINE_STATUS_AWAITING_CUSTOMER,
+    LINE_STATUS_REPLACED,
+    meta_items,
+    set_meta_items,
+    total_from_meta_items,
 )
 from tg_mini_app.paths import TEMPLATES_DIR
 from tg_mini_app.settings import get_settings
@@ -75,10 +83,12 @@ STATUS_LABELS_RU: dict[str, str] = {
     OrderStatus.PENDING_OPERATOR: "На согласовании",
     OrderStatus.PENDING_OPERATOR_CHANGE_TEXT: "Правки (текст)",
     OrderStatus.PENDING_CUSTOMER_CHANGE_ACCEPT: "Ждём ответ клиента",
+    OrderStatus.PENDING_CUSTOMER_SUBSTITUTION: "Ждём ответ по заменам",
     OrderStatus.AWAITING_PAYMENT: "Ждём оплату",
     OrderStatus.REJECTED_BY_OPERATOR: "Отклонён (оператор)",
     OrderStatus.REJECTED_BY_CUSTOMER: "Отклонён (клиент)",
     OrderStatus.CANCELLED_BY_CUSTOMER: "Отменён клиентом",
+    OrderStatus.CANCELLED_BY_OPERATOR: "Отменён оператором",
     OrderStatus.ACTIVE: "Активен",
     OrderStatus.OUT_FOR_DELIVERY: "Передан в доставку",
     OrderStatus.DELIVERED: "Доставлен",
@@ -116,10 +126,17 @@ async def require_operator_panel_auth(
     )
 
 
-def _redirect_panel(filter_status: str, **params: str) -> RedirectResponse:
+def _redirect_panel(
+    filter_status: str,
+    *,
+    filter_route: str = "",
+    **params: str,
+) -> RedirectResponse:
     q: dict[str, str] = {}
     if filter_status.strip():
         q["status"] = filter_status.strip()
+    if filter_route.strip():
+        q["route"] = filter_route.strip()
     q.update({k: v for k, v in params.items() if v})
     url = "/operator-panel"
     if q:
@@ -129,6 +146,24 @@ def _redirect_panel(filter_status: str, **params: str) -> RedirectResponse:
 
 def _bot(request: Request) -> Bot | None:
     return getattr(request.app.state, "bot", None)
+
+
+def _allow_line_substitution(status: str) -> bool:
+    return status in (
+        OrderStatus.PENDING_OPERATOR,
+        OrderStatus.AWAITING_PAYMENT,
+        OrderStatus.ACTIVE,
+    )
+
+
+def _allow_delivery_route_edit(status: str) -> bool:
+    return status not in (
+        OrderStatus.DELIVERED,
+        OrderStatus.CANCELLED_BY_CUSTOMER,
+        OrderStatus.CANCELLED_BY_OPERATOR,
+        OrderStatus.REJECTED_BY_OPERATOR,
+        OrderStatus.REJECTED_BY_CUSTOMER,
+    )
 
 
 @router.get("/ping")
@@ -216,15 +251,24 @@ async def operator_panel_logout() -> RedirectResponse:
 async def operator_panel_home(
     request: Request,
     status: str | None = None,
+    route: str | None = None,
     _: None = Depends(require_operator_panel_auth),
     session: AsyncSession = Depends(get_db_session),
 ) -> Any:
     q = select(models.Order).order_by(models.Order.id.desc()).limit(250)
     if status and status in STATUS_LABELS_RU:
         q = q.where(models.Order.status == status)
-    rows = (await session.execute(q)).scalars().all()
+    rows = list((await session.execute(q)).scalars().all())
+    route_filter = (route or "").strip()
+    if route_filter:
+        rows = [
+            o
+            for o in rows
+            if str((o.meta or {}).get("delivery_route", "")).strip() == route_filter
+        ]
     flash_err = request.query_params.get("err")
     flash_ok = request.query_params.get("ok")
+    route_filter_q = quote(route_filter, safe="") if route_filter else ""
     return _templates.TemplateResponse(
         request=request,
         name="operator_panel.html",
@@ -232,6 +276,8 @@ async def operator_panel_home(
             "title": "Панель оператора",
             "orders": rows,
             "status_filter": status or "",
+            "route_filter": route_filter,
+            "route_filter_q": route_filter_q,
             "status_labels": STATUS_LABELS_RU,
             "status_keys": list(STATUS_LABELS_RU.keys()),
             "flash_err": flash_err,
@@ -246,25 +292,33 @@ async def operator_order_action(
     request: Request,
     action: Annotated[str, Form()],
     filter_status: Annotated[str, Form()] = "",
+    filter_route: Annotated[str, Form()] = "",
+    delivery_route: Annotated[str, Form()] = "",
+    line_index: Annotated[str, Form()] = "",
+    new_product_id: Annotated[str, Form()] = "",
     _: None = Depends(require_operator_panel_auth),
     session: AsyncSession = Depends(get_db_session),
 ) -> RedirectResponse:
     settings = get_settings()
     bot = _bot(request)
     action = (action or "").strip()
+    fr = (filter_route or "").strip()
 
     order = (
         await session.execute(select(models.Order).where(models.Order.id == order_id))
     ).scalar_one_or_none()
     if order is None:
-        return _redirect_panel(filter_status, err="not_found")
+        return _redirect_panel(filter_status, filter_route=fr, err="not_found")
 
     op_id = settings.operator_chat_id or 0
+
+    def red(**kw: str) -> RedirectResponse:
+        return _redirect_panel(filter_status, filter_route=fr, **kw)
 
     if action == "approve":
         err = require_pending_operator_for_action(order.status)
         if err is not None:
-            return _redirect_panel(filter_status, err="bad_state")
+            return red(err="bad_state")
         meta = dict(order.meta)
         meta["operator_chat_id"] = op_id
         order.meta = meta
@@ -279,12 +333,12 @@ async def operator_order_action(
                 ),
                 reply_markup=payment_reply_markup(order.id),
             )
-        return _redirect_panel(filter_status, ok="1")
+        return red(ok="1")
 
     if action == "reject":
         err = require_pending_operator_for_action(order.status)
         if err is not None:
-            return _redirect_panel(filter_status, err="bad_state")
+            return red(err="bad_state")
         order.status = OrderStatus.REJECTED_BY_OPERATOR
         await unlock_cart_if_locked(session, order.cart_id)
         await session.commit()
@@ -293,12 +347,12 @@ async def operator_order_action(
                 chat_id=order.customer_tg_id,
                 text=f"К сожалению, заказ #{order.id} не принят.",
             )
-        return _redirect_panel(filter_status, ok="1")
+        return red(ok="1")
 
     if action == "ship":
         err = require_active_for_ship(order.status)
         if err is not None:
-            return _redirect_panel(filter_status, err="bad_state")
+            return red(err="bad_state")
         cid = order.customer_tg_id
         order.status = OrderStatus.OUT_FOR_DELIVERY
         await session.commit()
@@ -310,12 +364,12 @@ async def operator_order_action(
                     "Ожидайте курьера."
                 ),
             )
-        return _redirect_panel(filter_status, ok="1")
+        return red(ok="1")
 
     if action == "delivered":
         err = require_active_or_shipping_for_delivered(order.status)
         if err is not None:
-            return _redirect_panel(filter_status, err="bad_state")
+            return red(err="bad_state")
         cid = order.customer_tg_id
         order.status = OrderStatus.DELIVERED
         await session.commit()
@@ -324,6 +378,100 @@ async def operator_order_action(
                 chat_id=cid,
                 text=f"Заказ #{order.id} доставлен. Приятного аппетита!",
             )
-        return _redirect_panel(filter_status, ok="1")
+        return red(ok="1")
 
-    return _redirect_panel(filter_status, err="bad_action")
+    if action == "cancel_operator":
+        err = require_operator_cancel_order(order.status)
+        if err is not None:
+            return red(err="bad_state")
+        order.status = OrderStatus.CANCELLED_BY_OPERATOR
+        await unlock_cart_if_locked(session, order.cart_id)
+        await session.commit()
+        if bot is not None:
+            await bot.send_message(
+                chat_id=order.customer_tg_id,
+                text=f"Заказ #{order.id} отменён оператором.",
+            )
+        return red(ok="1")
+
+    if action == "set_delivery_route":
+        if not _allow_delivery_route_edit(order.status):
+            return red(err="bad_state")
+        meta = dict(order.meta or {})
+        meta["delivery_route"] = (delivery_route or "").strip()
+        order.meta = meta
+        await session.commit()
+        return red(ok="1")
+
+    if action == "mark_payment_received":
+        if order.status not in (
+            OrderStatus.AWAITING_PAYMENT,
+            OrderStatus.ACTIVE,
+            OrderStatus.OUT_FOR_DELIVERY,
+        ):
+            return red(err="bad_state")
+        meta = dict(order.meta or {})
+        meta["payment_received_confirmed"] = True
+        order.meta = meta
+        await session.commit()
+        return red(ok="1")
+
+    if action in ("substitute_direct", "substitute_propose"):
+        if not _allow_line_substitution(order.status):
+            return red(err="bad_state")
+        try:
+            idx = int((line_index or "").strip())
+            pid = int((new_product_id or "").strip())
+        except ValueError:
+            return red(err="bad_form")
+        items = meta_items(dict(order.meta or {}))
+        if idx < 0 or idx >= len(items):
+            return red(err="bad_line")
+        product = await session.get(models.Product, pid)
+        if product is None:
+            return red(err="bad_product")
+        item = dict(items[idx])
+        if action == "substitute_direct":
+            item["product_id"] = product.id
+            item["name"] = product.name
+            item["price_snapshot"] = str(product.price)
+            item["line_status"] = LINE_STATUS_REPLACED
+            item.pop("proposed", None)
+            items[idx] = item
+            new_meta = set_meta_items(dict(order.meta or {}), items)
+            order.meta = new_meta
+            order.total_amount = total_from_meta_items(items)
+            await session.commit()
+            if bot is not None:
+                await bot.send_message(
+                    chat_id=order.customer_tg_id,
+                    text=(
+                        f"По заказу #{order.id} позиция #{idx + 1} заменена на "
+                        f"«{product.name}» ({product.price} ₽). Сумма пересчитана."
+                    ),
+                )
+            return red(ok="1")
+
+        item["line_status"] = LINE_STATUS_AWAITING_CUSTOMER
+        item["proposed"] = {
+            "product_id": product.id,
+            "name": product.name,
+            "price_snapshot": str(product.price),
+        }
+        items[idx] = item
+        new_meta = set_meta_items(dict(order.meta or {}), items)
+        order.meta = new_meta
+        order.status = OrderStatus.PENDING_CUSTOMER_SUBSTITUTION
+        await session.commit()
+        if bot is not None:
+            await bot.send_message(
+                chat_id=order.customer_tg_id,
+                text=(
+                    f"По заказу #{order.id} предложена замена позиции #{idx + 1} на "
+                    f"«{product.name}». Откройте мини-приложение и подтвердите или "
+                    "отклоните замены."
+                ),
+            )
+        return red(ok="1")
+
+    return red(err="bad_action")

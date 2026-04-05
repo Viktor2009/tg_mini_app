@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.templating import Jinja2Templates
 
 from tg_mini_app.api.cart import router as cart_router
+from tg_mini_app.api.delivery_staff import router as delivery_staff_router
 from tg_mini_app.api.deps import get_db_session
 from tg_mini_app.api.operator_panel import router as operator_panel_router
 from tg_mini_app.api.orders import router as orders_router
@@ -49,6 +50,7 @@ def create_app() -> FastAPI:
     app.include_router(cart_router)
     app.include_router(orders_router)
     app.include_router(operator_panel_router)
+    app.include_router(delivery_staff_router)
 
     @app.get("/", response_class=HTMLResponse)
     async def root_page() -> str:
@@ -61,6 +63,8 @@ def create_app() -> FastAPI:
     <li><a href="/operator-panel">Панель оператора</a> — откроется
       <a href="/operator-panel/login">форма входа</a> или HTTP Basic:
       логин <code>operator</code>, пароль = <code>OPERATOR_PANEL_TOKEN</code></li>
+    <li><a href="/delivery/login">Страница курьера</a> (секрет =
+      <code>COURIER_API_TOKEN</code>)</li>
     <li><a href="/operator-panel/ping">Проверка панели (JSON, без пароля)</a></li>
     <li><a href="/health">/health</a></li>
   </ul>

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ title }}</title>
+    <style>
+      :root {
+        --bg: #0e1118;
+        --card: #1a1f2e;
+        --text: #e8eaf0;
+        --muted: #8b90a0;
+        --accent: #3d9cf0;
+        --danger: #e05555;
+        --border: #2a3142;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        font-family: system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+      .card {
+        width: 100%;
+        max-width: 360px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 22px;
+      }
+      h1 { font-size: 1.1rem; margin: 0 0 16px; }
+      label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+      input[type="password"] {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: var(--bg);
+        color: var(--text);
+        font-size: 15px;
+      }
+      button {
+        margin-top: 14px;
+        width: 100%;
+        padding: 11px;
+        border: none;
+        border-radius: 8px;
+        background: var(--accent);
+        color: #fff;
+        font-weight: 700;
+        font-size: 15px;
+        cursor: pointer;
+      }
+      .err { margin-top: 10px; font-size: 13px; color: var(--danger); }
+      .hint { margin-top: 14px; font-size: 11px; color: var(--muted); line-height: 1.4; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Доставка — вход</h1>
+      <form method="post" action="/delivery/login" autocomplete="off">
+        <label for="t">Секрет (как в COURIER_API_TOKEN)</label>
+        <input id="t" name="token" type="password" required placeholder="Введите секрет" />
+        <button type="submit">Войти</button>
+      </form>
+      {% if error %}
+        <p class="err">{{ error }}</p>
+      {% endif %}
+      <p class="hint">
+        Секрет задаётся в .env. После входа откроется список заказов «В доставке».
+      </p>
+    </div>
+  </body>
+</html>

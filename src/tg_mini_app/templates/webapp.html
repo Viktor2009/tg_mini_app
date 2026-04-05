@@ -24,6 +24,11 @@
 <!-- Статус заказа вне корзины: при закрытом drawer видно «в пути» / «доставлен» -->
 <div class="order-banner" id="orderBanner" hidden>
   <div class="order-banner__text hint order-status" id="orderStatus"></div>
+  <ul class="order-lines" id="orderLines" hidden></ul>
+  <div class="order-banner__subst" id="substitutionActions" hidden>
+    <button class="button-ghost primary" id="acceptSubstBtn" type="button">Принять замены</button>
+    <button class="button-ghost" id="rejectSubstBtn" type="button">Отклонить замены</button>
+  </div>
   <button class="button-ghost order-banner__cancel" id="cancelOrderBtn" type="button" hidden>
     Отменить заказ
   </button>

@@ -45,6 +45,19 @@ class OrderCreateRequest(BaseModel):
     customer_comment: str = Field(default="", max_length=512)
 
 
+class OrderLineItemResponse(BaseModel):
+    """Позиция заказа (снимок из meta.items)."""
+
+    product_id: int
+    name: str
+    qty: int
+    price: Decimal
+    line_status: str = "ok"
+    proposed_product_id: int | None = None
+    proposed_name: str | None = None
+    proposed_price: Decimal | None = None
+
+
 class OrderResponse(BaseModel):
     id: int
     cart_id: str
@@ -55,4 +68,10 @@ class OrderResponse(BaseModel):
     status: str
     payment_type: str
     total_amount: Decimal
+    items: list[OrderLineItemResponse] = Field(default_factory=list)
+    delivery_route: str | None = None
+    payment_received_confirmed: bool = False
+    courier_cash_received: bool = False
+    courier_cash_received_at: str | None = None
+    courier_delivered_at: str | None = None
 

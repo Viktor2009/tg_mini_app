@@ -1,7 +1,7 @@
 /* global Telegram */
 
 const apiBase = "";
-const APP_VERSION = "v8";
+const APP_VERSION = "v9";
 
 /**
  * Демо при пустом image_url. Commons, CC BY 2.0 (Tim Reckmann) — указать автора в проде.
@@ -30,13 +30,21 @@ const ORDER_STATUS_RU = {
   pending_operator: "На согласовании у оператора",
   pending_operator_change_text: "Оператор готовит правки",
   pending_customer_change_accept: "Нужен ваш ответ по правкам (см. чат Telegram)",
+  pending_customer_substitution: "Нужен ответ по замене позиций в заказе",
   awaiting_payment: "Согласован — выберите оплату в чате с ботом",
   rejected_by_operator: "Заказ не принят оператором",
   rejected_by_customer: "Заказ отменён",
   cancelled_by_customer: "Вы отменили заказ до согласования",
+  cancelled_by_operator: "Заказ отменён оператором",
   active: "Заказ активен",
   out_for_delivery: "Передан в доставку",
   delivered: "Заказ доставлен",
+};
+
+const LINE_STATUS_RU = {
+  ok: "",
+  replaced: "заменена",
+  awaiting_customer: "предложена замена",
 };
 
 /** Остановка опроса: финальные и «отмена»; active/out_for_delivery продолжаем. */
@@ -44,6 +52,7 @@ const ORDER_POLL_TERMINAL = new Set([
   "rejected_by_operator",
   "rejected_by_customer",
   "cancelled_by_customer",
+  "cancelled_by_operator",
   "delivered",
 ]);
 
@@ -72,12 +81,45 @@ function stopOrderPolling() {
 }
 
 function paidLine(order) {
-  if (order.status !== "active") return "";
-  if (order.payment_type === "card") return "Статус: оплачено (карта). ";
-  if (order.payment_type === "cash") {
-    return "Статус: заказ принят. Оплата наличными курьеру. ";
+  let extra = "";
+  if (order.courier_cash_received) {
+    extra += "Курьер отметил получение наличных. ";
   }
-  return "";
+  if (order.payment_received_confirmed) {
+    extra += "Оплата отмечена полученной. ";
+  }
+  if (order.status !== "active") return extra;
+  if (order.payment_type === "card") return `${extra}Оплачено (карта). `;
+  if (order.payment_type === "cash") {
+    return `${extra}Заказ принят. Оплата наличными курьеру. `;
+  }
+  return extra;
+}
+
+function renderOrderLines(order) {
+  const ul = byId("orderLines");
+  if (!ul) return;
+  const items = Array.isArray(order.items) ? order.items : [];
+  if (!items.length) {
+    ul.hidden = true;
+    ul.innerHTML = "";
+    return;
+  }
+  ul.hidden = false;
+  ul.innerHTML = "";
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    const st = it.line_status || "ok";
+    const stRu = LINE_STATUS_RU[st] || st;
+    let text = `${it.name} × ${it.qty} — ${rub(it.price)}`;
+    if (stRu) text += ` (${stRu})`;
+    if (st === "awaiting_customer" && it.proposed_name) {
+      text += ` → предложено: ${it.proposed_name} (${rub(it.proposed_price)})`;
+    }
+    const li = document.createElement("li");
+    li.textContent = text;
+    ul.appendChild(li);
+  }
 }
 
 function renderOrderStatus(order) {
@@ -89,10 +131,16 @@ function renderOrderStatus(order) {
     order.payment_type && order.status !== "active"
       ? ` · способ: ${order.payment_type}`
       : "";
-  el.textContent = `Заказ #${order.id}: ${paidLine(order)}${ru}${payExtra}`;
+  const route = order.delivery_route ? ` · маршрут: ${order.delivery_route}` : "";
+  el.textContent = `Заказ #${order.id}: ${paidLine(order)}${ru}${payExtra}${route}`;
   if (banner) banner.hidden = false;
+  renderOrderLines(order);
   const cancelBtn = byId("cancelOrderBtn");
   if (cancelBtn) cancelBtn.hidden = order.status !== "pending_operator";
+  const subst = byId("substitutionActions");
+  if (subst) {
+    subst.hidden = order.status !== "pending_customer_substitution";
+  }
   syncTabsStickyUnderBanner();
 }
 
@@ -155,6 +203,23 @@ async function apiPostCancelOrder(orderId) {
   if (!initData && tg) q.set("customer_tg_id", tg);
   const qs = q.toString();
   const path = `/orders/${orderId}/cancel${qs ? `?${qs}` : ""}`;
+  const r = await fetch(`${apiBase}${path}`, { method: "POST", headers });
+  if (!r.ok) {
+    const t = await r.text();
+    throw new Error(`POST ${path} -> ${r.status} ${t}`);
+  }
+  return await r.json();
+}
+
+async function apiPostOrderSubpath(orderId, subpath) {
+  const headers = { Accept: "application/json" };
+  const initData = getInitData();
+  if (initData) headers["X-Telegram-Init-Data"] = initData;
+  const q = new URLSearchParams();
+  const tg = getTgUserId() || getTgUserIdFromInput();
+  if (!initData && tg) q.set("customer_tg_id", tg);
+  const qs = q.toString();
+  const path = `/orders/${orderId}/${subpath}${qs ? `?${qs}` : ""}`;
   const r = await fetch(`${apiBase}${path}`, { method: "POST", headers });
   if (!r.ok) {
     const t = await r.text();
@@ -365,11 +430,17 @@ function renderGrid(products, onAdd) {
     const addBtn = document.createElement("button");
     addBtn.className = "product-card__add";
     addBtn.type = "button";
-    addBtn.textContent = "В корзину";
-    addBtn.addEventListener("click", () => {
-      hapticLight();
-      void onAdd(p.id);
-    });
+    if (!p.is_available) {
+      addBtn.classList.add("is-unavailable");
+      addBtn.textContent = "Нет в наличии";
+      addBtn.disabled = true;
+    } else {
+      addBtn.textContent = "В корзину";
+      addBtn.addEventListener("click", () => {
+        hapticLight();
+        void onAdd(p.id);
+      });
+    }
 
     footer.appendChild(price);
     footer.appendChild(addBtn);
@@ -545,6 +616,42 @@ async function main() {
         setHint(`Не удалось отменить заказ: ${String(e)}`);
       } finally {
         cancelOrderBtn.disabled = false;
+      }
+    });
+  }
+
+  const acceptSubstBtn = byId("acceptSubstBtn");
+  const rejectSubstBtn = byId("rejectSubstBtn");
+  if (acceptSubstBtn) {
+    acceptSubstBtn.addEventListener("click", async () => {
+      const oid = localStorage.getItem(LS_LAST_ORDER_ID);
+      if (!oid || !/^\d+$/.test(oid)) return;
+      acceptSubstBtn.disabled = true;
+      try {
+        await apiPostOrderSubpath(Number(oid), "substitutions/accept");
+        await refreshOrderStatusOnce(Number(oid));
+        setHint("Замены приняты. Ожидайте согласования заказа оператором.");
+      } catch (e) {
+        setHint(`Не удалось подтвердить замены: ${String(e)}`);
+      } finally {
+        acceptSubstBtn.disabled = false;
+      }
+    });
+  }
+  if (rejectSubstBtn) {
+    rejectSubstBtn.addEventListener("click", async () => {
+      const oid = localStorage.getItem(LS_LAST_ORDER_ID);
+      if (!oid || !/^\d+$/.test(oid)) return;
+      rejectSubstBtn.disabled = true;
+      try {
+        await apiPostOrderSubpath(Number(oid), "substitutions/reject");
+        await refreshOrderStatusOnce(Number(oid));
+        stopOrderPolling();
+        setHint("Замены отклонены, заказ отменён. Можно собрать корзину заново.");
+      } catch (e) {
+        setHint(`Не удалось отклонить замены: ${String(e)}`);
+      } finally {
+        rejectSubstBtn.disabled = false;
       }
     });
   }

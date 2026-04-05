@@ -420,7 +420,13 @@ pip install -e .
 sudo systemctl restart tg-mini-app-api.service tg-mini-app-bot.service
 ```
 
-**Одной командой** (скрипт в репозитории `deploy/server-update.sh` — сам переходит в корень проекта относительно своего расположения):
+**Одной командой:** скрипт `deploy/server-update.sh` сам вычисляет корень репозитория (родитель каталога `deploy/`) и делает `cd` туда, поэтому **предварительный `cd` в каталог проекта не обязателен**, если указать полный путь к скрипту:
+
+```bash
+bash /srv/tg_mini_app/deploy/server-update.sh
+```
+
+Эквивалентно (если вы уже в корне репозитория):
 
 ```bash
 cd /srv/tg_mini_app

@@ -24,6 +24,8 @@ class OrderStatus:
     ACTIVE = "active"
     OUT_FOR_DELIVERY = "out_for_delivery"
     DELIVERED = "delivered"
+    CANCELLED_BY_OPERATOR = "cancelled_by_operator"
+    PENDING_CUSTOMER_SUBSTITUTION = "pending_customer_substitution"
 
 
 MSG_STALE_ORDER = "Заказ уже обработан или в другом состоянии."
@@ -83,6 +85,33 @@ def require_active_for_ship(status: str) -> str | None:
 def require_active_or_shipping_for_delivered(status: str) -> str | None:
     """Команда оператора: вручён клиенту."""
     if status not in (OrderStatus.ACTIVE, OrderStatus.OUT_FOR_DELIVERY):
+        return MSG_STALE_ORDER
+    return None
+
+
+def require_out_for_delivery_for_courier_delivered(status: str) -> str | None:
+    """Доставщик: только после передачи в доставку."""
+    if status != OrderStatus.OUT_FOR_DELIVERY:
+        return MSG_STALE_ORDER
+    return None
+
+
+def require_operator_cancel_order(status: str) -> str | None:
+    """Отмена оператором до финала."""
+    if status in (
+        OrderStatus.DELIVERED,
+        OrderStatus.CANCELLED_BY_CUSTOMER,
+        OrderStatus.CANCELLED_BY_OPERATOR,
+        OrderStatus.REJECTED_BY_OPERATOR,
+        OrderStatus.REJECTED_BY_CUSTOMER,
+    ):
+        return MSG_STALE_ORDER
+    return None
+
+
+def require_pending_customer_substitution(status: str) -> str | None:
+    """Ответ клиента по предложенным заменам позиций."""
+    if status != OrderStatus.PENDING_CUSTOMER_SUBSTITUTION:
         return MSG_STALE_ORDER
     return None
 

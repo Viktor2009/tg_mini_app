@@ -41,6 +41,15 @@ class Settings(BaseSettings):
         ),
     )
 
+    courier_api_token: str = Field(
+        default="",
+        alias="COURIER_API_TOKEN",
+        description=(
+            "Секрет для API доставщика (/delivery/...?token=). "
+            "Пусто — маршруты доставщика отключены."
+        ),
+    )
+
     telegram_webapp_secret: str = Field(
         default="",
         alias="TELEGRAM_WEBAPP_SECRET",
@@ -68,7 +77,7 @@ class Settings(BaseSettings):
             return None
         return value
 
-    @field_validator("operator_panel_token", mode="before")
+    @field_validator("operator_panel_token", "courier_api_token", mode="before")
     @classmethod
     def _strip_operator_panel_token(cls, value: object) -> object:
         if isinstance(value, str):

@@ -90,14 +90,34 @@
       <h1>Панель оператора</h1>
 
       <div class="filters">
-        <a href="/operator-panel" class="{{ 'is-active' if not status_filter else '' }}">Все</a>
+        <a
+          href="/operator-panel{% if route_filter_q %}?route={{ route_filter_q }}{% endif %}"
+          class="{{ 'is-active' if not status_filter else '' }}"
+        >Все</a>
         {% for sk in status_keys %}
           <a
-            href="/operator-panel?status={{ sk }}"
+            href="/operator-panel?status={{ sk }}{% if route_filter_q %}&route={{ route_filter_q }}{% endif %}"
             class="{{ 'is-active' if status_filter == sk else '' }}"
           >{{ status_labels[sk] }}</a>
         {% endfor %}
       </div>
+
+      <form class="filters" method="get" action="/operator-panel" style="margin-bottom: 12px">
+        {% if status_filter %}
+          <input type="hidden" name="status" value="{{ status_filter }}" />
+        {% endif %}
+        <input
+          type="text"
+          name="route"
+          value="{{ route_filter }}"
+          placeholder="Фильтр по маршруту доставки"
+          style="min-width: 220px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--card); color: var(--text)"
+        />
+        <button type="submit">Показать маршрут</button>
+        {% if route_filter %}
+          <a href="/operator-panel{% if status_filter %}?status={{ status_filter }}{% endif %}" style="color: var(--muted)">Сбросить маршрут</a>
+        {% endif %}
+      </form>
 
       {% if flash_ok %}
         <div class="flash flash--ok">Действие выполнено.</div>
@@ -108,6 +128,12 @@
         <div class="flash flash--err">Действие недоступно для текущего статуса.</div>
       {% elif flash_err == "bad_action" %}
         <div class="flash flash--err">Неизвестное действие.</div>
+      {% elif flash_err == "bad_form" %}
+        <div class="flash flash--err">Проверьте индекс строки и ID товара.</div>
+      {% elif flash_err == "bad_line" %}
+        <div class="flash flash--err">Нет такой позиции в заказе (индекс с 0).</div>
+      {% elif flash_err == "bad_product" %}
+        <div class="flash flash--err">Товар с таким ID не найден.</div>
       {% elif flash_err %}
         <div class="flash flash--err">Ошибка.</div>
       {% endif %}
@@ -121,6 +147,7 @@
               <th>#</th>
               <th>Статус</th>
               <th>Сумма</th>
+              <th>Курьер</th>
               <th>Клиент</th>
               <th>Адрес / время</th>
               <th>Состав</th>
@@ -133,6 +160,20 @@
                 <td><strong>{{ o.id }}</strong></td>
                 <td>{{ status_labels.get(o.status, o.status) }}</td>
                 <td>{{ o.total_amount }} ₽<br /><span class="muted">{{ o.payment_type or "—" }}</span></td>
+                <td class="muted" style="font-size: 12px">
+                  {% if o.meta.get("courier_cash_received") %}
+                    Наличные ✓<br />
+                    <span class="muted">{{ o.meta.get("courier_cash_received_at", "") }}</span>
+                  {% endif %}
+                  {% if o.meta.get("courier_delivered_at") %}
+                    {% if o.meta.get("courier_cash_received") %}<br />{% endif %}
+                    Вручено ✓<br />
+                    <span class="muted">{{ o.meta.get("courier_delivered_at", "") }}</span>
+                  {% endif %}
+                  {% if not o.meta.get("courier_cash_received") and not o.meta.get("courier_delivered_at") %}
+                    —
+                  {% endif %}
+                </td>
                 <td class="muted">{{ o.customer_tg_id }}</td>
                 <td>
                   {{ o.address }}<br />
@@ -154,28 +195,82 @@
                     {% if o.status == "pending_operator" %}
                       <form method="post" action="/operator-panel/orders/{{ o.id }}/action">
                         <input type="hidden" name="filter_status" value="{{ status_filter }}" />
+                        <input type="hidden" name="filter_route" value="{{ route_filter }}" />
                         <input type="hidden" name="action" value="approve" />
                         <button type="submit" class="primary">Согласовать</button>
                       </form>
                       <form method="post" action="/operator-panel/orders/{{ o.id }}/action">
                         <input type="hidden" name="filter_status" value="{{ status_filter }}" />
+                        <input type="hidden" name="filter_route" value="{{ route_filter }}" />
                         <input type="hidden" name="action" value="reject" />
                         <button type="submit" class="danger">Отклонить</button>
                       </form>
                     {% elif o.status == "active" %}
                       <form method="post" action="/operator-panel/orders/{{ o.id }}/action">
                         <input type="hidden" name="filter_status" value="{{ status_filter }}" />
+                        <input type="hidden" name="filter_route" value="{{ route_filter }}" />
                         <input type="hidden" name="action" value="ship" />
                         <button type="submit" class="primary">Передан в доставку</button>
                       </form>
                     {% elif o.status == "out_for_delivery" %}
                       <form method="post" action="/operator-panel/orders/{{ o.id }}/action">
                         <input type="hidden" name="filter_status" value="{{ status_filter }}" />
+                        <input type="hidden" name="filter_route" value="{{ route_filter }}" />
                         <input type="hidden" name="action" value="delivered" />
                         <button type="submit">Доставлен</button>
                       </form>
                     {% elif o.status == "awaiting_payment" %}
                       <span class="muted">Оплата в боте</span>
+                    {% endif %}
+                  </div>
+                </td>
+              </tr>
+              <tr class="muted">
+                <td colspan="8" style="font-size: 12px; background: rgba(0,0,0,0.12)">
+                  <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end">
+                    {% if o.status not in ("delivered", "cancelled_by_customer", "cancelled_by_operator", "rejected_by_operator", "rejected_by_customer") %}
+                      <form method="post" action="/operator-panel/orders/{{ o.id }}/action" style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center">
+                        <input type="hidden" name="filter_status" value="{{ status_filter }}" />
+                        <input type="hidden" name="filter_route" value="{{ route_filter }}" />
+                        <input type="hidden" name="action" value="set_delivery_route" />
+                        <span>Маршрут / курьер:</span>
+                        <input name="delivery_route" value="{{ o.meta.get('delivery_route', '') }}" placeholder="например: Курьер_1_вечер" style="min-width: 160px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text)" />
+                        <button type="submit">Сохранить</button>
+                      </form>
+                      <form method="post" action="/operator-panel/orders/{{ o.id }}/action">
+                        <input type="hidden" name="filter_status" value="{{ status_filter }}" />
+                        <input type="hidden" name="filter_route" value="{{ route_filter }}" />
+                        <input type="hidden" name="action" value="cancel_operator" />
+                        <button type="submit" class="danger">Отменить заказ</button>
+                      </form>
+                    {% endif %}
+                    {% if o.status in ("awaiting_payment", "active", "out_for_delivery") %}
+                      <form method="post" action="/operator-panel/orders/{{ o.id }}/action">
+                        <input type="hidden" name="filter_status" value="{{ status_filter }}" />
+                        <input type="hidden" name="filter_route" value="{{ route_filter }}" />
+                        <input type="hidden" name="action" value="mark_payment_received" />
+                        <button type="submit">Оплата получена</button>
+                      </form>
+                    {% endif %}
+                    {% if o.status in ("pending_operator", "awaiting_payment", "active") %}
+                      <form method="post" action="/operator-panel/orders/{{ o.id }}/action" style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center">
+                        <input type="hidden" name="filter_status" value="{{ status_filter }}" />
+                        <input type="hidden" name="filter_route" value="{{ route_filter }}" />
+                        <input type="hidden" name="action" value="substitute_direct" />
+                        <span>Замена (сразу):</span>
+                        <input name="line_index" placeholder="№ строки 0…" size="6" style="padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text)" />
+                        <input name="new_product_id" placeholder="ID товара" size="8" style="padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text)" />
+                        <button type="submit">Применить</button>
+                      </form>
+                      <form method="post" action="/operator-panel/orders/{{ o.id }}/action" style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center">
+                        <input type="hidden" name="filter_status" value="{{ status_filter }}" />
+                        <input type="hidden" name="filter_route" value="{{ route_filter }}" />
+                        <input type="hidden" name="action" value="substitute_propose" />
+                        <span>Замена (клиенту):</span>
+                        <input name="line_index" placeholder="№ строки 0…" size="6" style="padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text)" />
+                        <input name="new_product_id" placeholder="ID товара" size="8" style="padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text)" />
+                        <button type="submit">Предложить</button>
+                      </form>
                     {% endif %}
                   </div>
                 </td>
@@ -192,7 +287,14 @@
         <code>OPERATOR_PANEL_TOKEN</code>).
         <a href="/operator-panel/logout" style="color: var(--muted)">Выйти</a>.
         В боте: кнопка «Передан в доставку» после оплаты клиентом, либо команды
-        <code>/ship N</code>, <code>/delivery N</code> и <code>/delivered N</code>.
+        <code>/ship N</code>, <code>/delivery N</code> и         <code>/delivered N</code>.
+        Доставщик (при <code>COURIER_API_TOKEN</code>):
+        <a href="/delivery/login" style="color: var(--accent)">страница курьера</a>
+        · JSON:
+        <code>GET /delivery/orders?token=…</code>,
+        <code>POST /delivery/orders/N/delivered?token=…</code>,
+        <code>POST /delivery/orders/N/cash-received?token=…</code>
+        (статус «Передан в доставку»).
       </p>
     </div>
   </body>

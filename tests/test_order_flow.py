@@ -14,8 +14,11 @@ from tg_mini_app.order_flow import (
     OrderStatus,
     require_active_for_ship,
     require_awaiting_payment,
+    require_operator_cancel_order,
     require_operator_identity,
+    require_out_for_delivery_for_courier_delivered,
     require_pending_customer_change,
+    require_pending_customer_substitution,
     require_pending_operator_for_action,
     require_pending_operator_for_cancel,
 )
@@ -104,6 +107,47 @@ class TestCartOwner(unittest.TestCase):
         with self.assertRaises(HTTPException) as ctx:
             assert_cart_mutation_allowed(5, 9)
         self.assertEqual(ctx.exception.status_code, 403)
+
+
+class TestOperatorCancel(unittest.TestCase):
+    def test_blocks_delivered(self) -> None:
+        self.assertEqual(
+            require_operator_cancel_order(OrderStatus.DELIVERED),
+            MSG_STALE_ORDER,
+        )
+
+    def test_allows_pending(self) -> None:
+        self.assertIsNone(
+            require_operator_cancel_order(OrderStatus.PENDING_OPERATOR),
+        )
+
+
+class TestCourierDelivered(unittest.TestCase):
+    def test_only_out_for_delivery(self) -> None:
+        self.assertIsNone(
+            require_out_for_delivery_for_courier_delivered(
+                OrderStatus.OUT_FOR_DELIVERY,
+            ),
+        )
+        self.assertEqual(
+            require_out_for_delivery_for_courier_delivered(OrderStatus.ACTIVE),
+            MSG_STALE_ORDER,
+        )
+
+
+class TestPendingSubstitution(unittest.TestCase):
+    def test_ok(self) -> None:
+        self.assertIsNone(
+            require_pending_customer_substitution(
+                OrderStatus.PENDING_CUSTOMER_SUBSTITUTION,
+            ),
+        )
+
+    def test_stale(self) -> None:
+        self.assertEqual(
+            require_pending_customer_substitution(OrderStatus.PENDING_OPERATOR),
+            MSG_STALE_ORDER,
+        )
 
 
 class TestPayment(unittest.TestCase):
