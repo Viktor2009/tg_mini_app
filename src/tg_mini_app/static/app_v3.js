@@ -144,6 +144,15 @@ function renderOrderStatus(order) {
   syncTabsStickyUnderBanner();
 }
 
+function _orderFetchLooksLikeMissing(msg) {
+  const s = String(msg);
+  return (
+    /\b404\b/.test(s) ||
+    s.includes("Заказ не найден") ||
+    s.includes('"detail":"Заказ не найден"')
+  );
+}
+
 async function refreshOrderStatusOnce(orderId) {
   try {
     const order = await apiGetOrder(orderId);
@@ -152,6 +161,14 @@ async function refreshOrderStatusOnce(orderId) {
   } catch (e) {
     const el = byId("orderStatus");
     const banner = byId("orderBanner");
+    if (_orderFetchLooksLikeMissing(e)) {
+      localStorage.removeItem(LS_LAST_ORDER_ID);
+      stopOrderPolling();
+      if (banner) banner.hidden = true;
+      if (el) el.textContent = "";
+      syncTabsStickyUnderBanner();
+      return null;
+    }
     if (banner) banner.hidden = false;
     if (el) {
       el.textContent = `Заказ: не удалось обновить статус (${String(e)})`;
@@ -299,6 +316,18 @@ function getTgUserIdFromInput() {
 
 async function ensureCart() {
   let cartId = localStorage.getItem("cart_id");
+  if (cartId) {
+    try {
+      const existing = await apiGet(`/cart/${cartId}`);
+      if (existing.status !== "open") {
+        localStorage.removeItem("cart_id");
+        cartId = null;
+      }
+    } catch {
+      localStorage.removeItem("cart_id");
+      cartId = null;
+    }
+  }
   if (!cartId) {
     const cart = await apiPost("/cart", { owner_tg_id: getTgUserId() });
     cartId = cart.id;
