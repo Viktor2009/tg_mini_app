@@ -438,6 +438,14 @@ bash deploy/server-update.sh
 ```bash
 GIT_REMOTE=github bash deploy/server-update.sh
 ```
+==================================================
+Обновление GitHub и сервера одной строкой
+.\push-and-deploy.cmd -SshTarget root@77.222.35.130
+
+Или чтобы не писать IP каждый раз (один раз в сессии PowerShell):
+$env:TG_MINI_APP_DEPLOY_SSH = "root@77.222.35.130"; .\push-and-deploy.cmd
+====================================================
+
 
 Только обновить код и зависимости, **без** перезапуска systemd:
 
