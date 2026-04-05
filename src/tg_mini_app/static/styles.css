@@ -179,9 +179,27 @@ a { color: var(--text); }
   letter-spacing: -0.01em;
 }
 
+/* Как у «В корзину» (.product-card__add): акцент, скругление, тень. */
 .order-banner__cancel {
-  margin-top: 8px;
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 10px;
   margin-bottom: 0;
+  padding: 10px 18px;
+  border-radius: 12px;
+  border: none;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  background: var(--accent);
+  color: var(--accent-text);
+  box-shadow: 0 2px 0 color-mix(in srgb, var(--accent-text) 22%, transparent);
+}
+
+.order-banner__cancel:active {
+  transform: translateY(1px);
+  box-shadow: none;
 }
 
 /* Категории — горизонтальный чипы-скролл */
@@ -207,7 +225,9 @@ a { color: var(--text); }
   padding: 10px 16px;
   border-radius: 999px;
   border: 1px solid var(--border);
+  /* Немного темнее, чем var(--muted); без color-mix остаётся прежний muted. */
   color: var(--muted);
+  color: color-mix(in srgb, var(--text) 38%, var(--muted) 62%);
   background: color-mix(in srgb, var(--card) 40%, transparent);
   font-size: 13px;
   font-weight: 600;
