@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from decimal import Decimal
 from typing import Any
 
@@ -8,6 +9,8 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 from starlette.templating import Jinja2Templates
 
 from tg_mini_app.api.cart import router as cart_router
@@ -22,10 +25,29 @@ from tg_mini_app.db.session import create_engine, create_sessionmaker
 from tg_mini_app.paths import STATIC_DIR, TEMPLATES_DIR
 from tg_mini_app.settings import get_settings
 
+# Telegram WebView сильно кеширует HTML мини-приложения; без этого остаётся старый
+# base.html со старыми ?v= на CSS/JS — визуально «деплой не сработал».
+_NO_STORE = "no-store, no-cache, must-revalidate, max-age=0"
+
+
+class _MiniAppAssetsNoCacheMiddleware(BaseHTTPMiddleware):
+    async def dispatch(
+        self,
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        response = await call_next(request)
+        path = request.url.path
+        if path == "/webapp" or path.startswith("/static/"):
+            response.headers["Cache-Control"] = _NO_STORE
+            response.headers["Pragma"] = "no-cache"
+        return response
+
 
 def create_app() -> FastAPI:
     # Без этого /operator-panel/ даёт 307 без Basic → белый экран в браузере.
     app = FastAPI(title="tg_mini_app", redirect_slashes=False)
+    app.add_middleware(_MiniAppAssetsNoCacheMiddleware)
 
     engine = create_engine()
     app.state.engine = engine
@@ -77,11 +99,14 @@ def create_app() -> FastAPI:
     async def webapp(request: Request) -> Any:
         settings = get_settings()
         app_env = (settings.app_env or "local").strip().lower()
-        return templates.TemplateResponse(
+        resp = templates.TemplateResponse(
             request=request,
             name="webapp.html",
             context={"title": "Суши • Mini App", "app_env": app_env},
         )
+        resp.headers["Cache-Control"] = _NO_STORE
+        resp.headers["Pragma"] = "no-cache"
+        return resp
 
     @app.get("/health")
     async def health() -> dict[str, str]:

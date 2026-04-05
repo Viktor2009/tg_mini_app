@@ -252,7 +252,7 @@ def _apply_cash_received(order: models.Order) -> str | None:
     return None
 
 
-def _apply_courier_delivered(
+async def _apply_courier_delivered(
     request: Request,
     order: models.Order,
 ) -> str | None:
@@ -320,7 +320,7 @@ async def delivery_ui_delivered(
     ).scalar_one_or_none()
     if order is None:
         return _redirect_delivery(filter_route or None, err="not_found")
-    err_code = _apply_courier_delivered(request, order)
+    err_code = await _apply_courier_delivered(request, order)
     if err_code is not None:
         return _redirect_delivery(filter_route or None, err=err_code)
     await session.commit()
@@ -364,7 +364,7 @@ async def delivery_mark_delivered(
     ).scalar_one_or_none()
     if order is None:
         raise HTTPException(status_code=404, detail="Заказ не найден")
-    err_code = _apply_courier_delivered(request, order)
+    err_code = await _apply_courier_delivered(request, order)
     if err_code is not None:
         raise HTTPException(status_code=409, detail="Недопустимый статус для доставки")
     await session.commit()
