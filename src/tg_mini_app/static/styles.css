@@ -162,9 +162,12 @@ a { color: var(--text); }
   margin-top: 0;
   padding-top: 0;
   border-top: none;
-  color: var(--text);
-  font-size: 13px;
-  line-height: 1.35;
+  /* Крупнее и чуть темнее основного текста витрины (не «hint»). */
+  color: color-mix(in srgb, var(--text) 78%, #000 22%);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
 }
 
 .order-banner__cancel {
@@ -353,8 +356,8 @@ a { color: var(--text); }
   list-style: none;
   margin: 8px 0 0;
   padding: 0 0 0 4px;
-  font-size: 12px;
-  color: var(--product-meta);
+  font-size: 13px;
+  color: color-mix(in srgb, var(--product-meta) 88%, #000 12%);
   line-height: 1.45;
 }
 
