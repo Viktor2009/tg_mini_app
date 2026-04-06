@@ -163,11 +163,58 @@ sudo systemctl restart tg-mini-app-api.service tg-mini-app-bot.service
 
 (Путь к проекту подставьте свой, если не **`/srv/tg_mini_app`**. Либо один раз **`bash deploy/server-update.sh`** — раздел **8.4**.)
 
+**Перед любым обновлением кода на сервере** (**`git pull`**, **`deploy/server-update.sh`**, **`push-and-deploy.cmd`**) сделайте **резервную копию** — см. подраздел **«Резервная копия на VPS»** ниже.
+
 3. **Не запускайте второй раз** **`python -m tg_mini_app.api`** (и бота) вручную в SSH, пока эти же процессы уже крутятся в **systemd**: порт **8000** будет занят, в логах Uvicorn появится **`address already in use`**. Для отладки вручную сначала остановите службу: **`sudo systemctl stop tg-mini-app-api.service`** (и при необходимости бота), потом запускайте из venv; после отладки — **`sudo systemctl start …`** или **`restart`**.
 
 ### На ПК (локально без systemd)
 
 Остановка: **Ctrl+C** в окнах с API и ботом. После смены кода или **`.env`** — снова запустить оба процесса (раздел **4**).
+
+### Резервная копия на VPS перед обновлением
+
+Имеет смысл копировать как минимум **базу SQLite** и **`.env`** (там секреты — храните бэкап **только** на сервере с ограниченным доступом или скачайте на ПК **защищённо**, не в публичные чаты).
+
+**Вариант с короткой остановкой API/бота** (файл БД на диске в согласованном состоянии; для активного потока заказов предпочтительнее):
+
+```bash
+sudo systemctl stop tg-mini-app-api.service tg-mini-app-bot.service
+mkdir -p /root/tg_mini_app_backups
+TS=$(date +%Y%m%d_%H%M%S)
+cp /srv/tg_mini_app/data/app.db "/root/tg_mini_app_backups/app_${TS}.db"
+cp /srv/tg_mini_app/.env "/root/tg_mini_app_backups/env_${TS}.bak"
+chmod 600 /root/tg_mini_app_backups/env_${TS}.bak
+sudo systemctl start tg-mini-app-api.service tg-mini-app-bot.service
+```
+
+Если путь к БД в **`.env`** другой (**`DATABASE_URL`**), подставьте **реальный** файл вместо **`data/app.db`**.
+
+**Быстрый вариант без остановки** (на маленькой БД часто достаточно; теоретически возможна редкая порча при одновременной записи):
+
+```bash
+mkdir -p /root/tg_mini_app_backups
+TS=$(date +%Y%m%d_%H%M%S)
+cp /srv/tg_mini_app/data/app.db "/root/tg_mini_app_backups/app_${TS}.db"
+cp /srv/tg_mini_app/.env "/root/tg_mini_app_backups/env_${TS}.bak"
+```
+
+**Архив всего каталога проекта** (кроме тяжёлого **`.venv`**, его при необходимости восстановите через **`pip`**):
+
+```bash
+TS=$(date +%Y%m%d_%H%M%S)
+sudo tar -C /srv -czf "/root/tg_mini_app_backups/tg_mini_app_${TS}.tar.gz" \
+  --exclude='tg_mini_app/.venv' tg_mini_app
+```
+
+Скачать бэкап на ПК: **`scp`** с сервера — как в **`LINUX_SERVER_BEGINNER.md`** (этап 3).
+
+**Восстановление БД** (осторожно, перезапишет текущие данные):
+
+```bash
+sudo systemctl stop tg-mini-app-api.service tg-mini-app-bot.service
+cp /root/tg_mini_app_backups/app_НУЖНАЯ_ДАТА.db /srv/tg_mini_app/data/app.db
+sudo systemctl start tg-mini-app-api.service tg-mini-app-bot.service
+```
 
 ---
 
@@ -376,6 +423,8 @@ pip install -e .
 
 **Обновление после правок с ПК:**
 
+Перед **`git pull`** сделайте резервную копию БД и **`.env`** — раздел **5** (подраздел **«Резервная копия на VPS»**).
+
 ```bash
 cd /srv/tg_mini_app
 git pull
@@ -489,6 +538,7 @@ $env:TG_MINI_APP_DEPLOY_SSH = "root@ВАШ_IP"
 
 - **Запуск локально (Windows)** — разделы **2** и **4**.
 - **Запуск на VPS** — разделы **2**, **4**, **7**.
+- **Перед обновлением на VPS** — резервная копия **`data/app.db`** и **`.env`** (раздел **5**, подраздел в конце).
 - **Кнопки в боте не работают** — раздел **6** и оба процесса из раздела **4** / службы из раздела **7**.
 - **Залить правки на GitHub** — раздел **8.2**.
 - **Обновить код на сервере** — раздел **8.4**, скрипт **`deploy/server-update.sh`**.
