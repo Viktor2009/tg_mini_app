@@ -1,7 +1,7 @@
 /* global Telegram */
 
 const apiBase = "";
-const APP_VERSION = "v10";
+const APP_VERSION = "v11";
 
 /**
  * Демо при пустом image_url. Commons, CC BY 2.0 (Tim Reckmann) — указать автора в проде.
@@ -136,9 +136,11 @@ function renderOrderStatus(order) {
   if (banner) banner.hidden = false;
   renderOrderLines(order);
   const cancelBtn = byId("cancelOrderBtn");
+  // «Отменить заказ» только после отправки на согласование (ожидание оператора).
   if (cancelBtn) cancelBtn.hidden = order.status !== "pending_operator";
   const subst = byId("substitutionActions");
   if (subst) {
+    // Кнопки замены только в режиме согласования позиций (кол-во / вид товара).
     subst.hidden = order.status !== "pending_customer_substitution";
   }
   syncTabsStickyUnderBanner();
@@ -726,7 +728,7 @@ async function main() {
       try {
         await apiPostOrderSubpath(Number(oid), "substitutions/accept");
         await refreshOrderStatusOnce(Number(oid));
-        setHint("Замены приняты. Ожидайте согласования заказа оператором.");
+        setHint("Замена принята. Ожидайте согласования заказа оператором.");
       } catch (e) {
         setHint(`Не удалось подтвердить замены: ${String(e)}`);
       } finally {
@@ -743,7 +745,7 @@ async function main() {
         await apiPostOrderSubpath(Number(oid), "substitutions/reject");
         await refreshOrderStatusOnce(Number(oid));
         stopOrderPolling();
-        setHint("Замены отклонены, заказ отменён. Можно собрать корзину заново.");
+        setHint("Замена отменена, заказ отменён. Можно собрать корзину заново.");
       } catch (e) {
         setHint(`Не удалось отклонить замены: ${String(e)}`);
       } finally {
@@ -805,13 +807,15 @@ async function main() {
       localStorage.setItem(LS_LAST_ORDER_ID, String(order.id));
       cartId = await ensureCart();
       await refreshCart();
+      drawerClose();
+      renderOrderStatus(order);
       setHint(`Заказ #${order.id} отправлен на согласование. Ожидайте ответ в чате Telegram.`);
       startOrderPolling(order.id);
     } catch (e) {
       setHint(`Ошибка при отправке: ${String(e)}`);
     } finally {
       checkoutBtn.disabled = false;
-      checkoutBtn.textContent = "Согласовать заказ";
+      checkoutBtn.textContent = "Отправить на согласование";
     }
   });
 }

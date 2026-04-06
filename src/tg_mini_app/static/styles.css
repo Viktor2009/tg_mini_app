@@ -449,11 +449,25 @@ a { color: var(--text); }
   margin: 2px 0;
 }
 
+/* Две кнопки по согласованию замен — всегда одна строка (без переноса). */
 .order-banner__subst {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: stretch;
   gap: 8px;
   margin-top: 10px;
+}
+
+.order-banner__subst .button-ghost {
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
+  margin-top: 0;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+  padding: 10px 8px;
 }
 
 /* FAB корзины */
