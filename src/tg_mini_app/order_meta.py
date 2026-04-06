@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+from typing import Any
+
 # Отметки курьера (та же строка заказа в БД — видит оператор в панели).
 META_COURIER_CASH_RECEIVED = "courier_cash_received"
 META_COURIER_CASH_RECEIVED_AT = "courier_cash_received_at"
 META_COURIER_DELIVERED_AT = "courier_delivered_at"
-
-from decimal import Decimal
-from typing import Any
 
 LINE_STATUS_OK = "ok"
 LINE_STATUS_REPLACED = "replaced"

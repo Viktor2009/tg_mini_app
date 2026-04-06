@@ -145,6 +145,8 @@ async def change_item(
         raise HTTPException(status_code=404, detail="Товар не найден")
     if not product.is_available:
         raise HTTPException(status_code=409, detail="Товар недоступен")
+    if product.stock_quantity is not None and product.stock_quantity <= 0:
+        raise HTTPException(status_code=409, detail="Товар недоступен")
 
     item = (
         await session.execute(
@@ -158,6 +160,14 @@ async def change_item(
     if item is None:
         if payload.qty_delta <= 0:
             return _cart_to_response(cart)
+        if (
+            product.stock_quantity is not None
+            and payload.qty_delta > product.stock_quantity
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Недостаточно товара на складе",
+            )
         session.add(
             models.CartItem(
                 cart_id=cart_id,
@@ -173,6 +183,14 @@ async def change_item(
                 delete(models.CartItem).where(models.CartItem.id == item.id)
             )
         else:
+            if (
+                product.stock_quantity is not None
+                and new_qty > product.stock_quantity
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Недостаточно товара на складе",
+                )
             item.qty = new_qty
 
     await session.commit()

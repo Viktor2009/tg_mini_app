@@ -1,7 +1,7 @@
 /* global Telegram */
 
 const apiBase = "";
-const APP_VERSION = "v9";
+const APP_VERSION = "v10";
 
 /**
  * Демо при пустом image_url. Commons, CC BY 2.0 (Tim Reckmann) — указать автора в проде.
@@ -407,10 +407,27 @@ function renderGrid(products, onAdd) {
     const card = document.createElement("article");
     card.className = "card";
 
+    const galleryRaw = Array.isArray(p.image_gallery) ? p.image_gallery : [];
+    const gallery = galleryRaw
+      .map((u) => String(u || "").trim())
+      .filter(Boolean);
+    const fallbackMain =
+      (p.image_url && String(p.image_url).trim()) || gallery[0] || "";
+    const urls = gallery.length ? gallery : fallbackMain ? [fallbackMain] : [];
+
     const imgWrap = document.createElement("div");
     imgWrap.className = "card__img";
-    const src = p.image_url || DEMO_FALLBACK_IMAGE_URL;
-    if (src) {
+
+    let imgIndex = 0;
+    const paintImg = () => {
+      imgWrap.innerHTML = "";
+      const src = urls.length ? urls[imgIndex] : DEMO_FALLBACK_IMAGE_URL;
+      if (!urls.length) {
+        imgWrap.textContent = "Фото";
+        imgWrap.classList.add("is-placeholder");
+        return;
+      }
+      imgWrap.classList.remove("is-placeholder");
       const img = document.createElement("img");
       img.alt = p.name;
       img.loading = "lazy";
@@ -423,10 +440,35 @@ function renderGrid(products, onAdd) {
         imgWrap.classList.add("is-placeholder");
       });
       imgWrap.appendChild(img);
-    } else {
-      imgWrap.textContent = "Фото";
-      imgWrap.classList.add("is-placeholder");
-    }
+      if (urls.length > 1) {
+        const nav = document.createElement("div");
+        nav.className = "card__img-nav";
+        const prev = document.createElement("button");
+        prev.type = "button";
+        prev.className = "card__img-btn";
+        prev.setAttribute("aria-label", "Предыдущее фото");
+        prev.textContent = "‹";
+        prev.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          imgIndex = (imgIndex - 1 + urls.length) % urls.length;
+          paintImg();
+        });
+        const next = document.createElement("button");
+        next.type = "button";
+        next.className = "card__img-btn";
+        next.setAttribute("aria-label", "Следующее фото");
+        next.textContent = "›";
+        next.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          imgIndex = (imgIndex + 1) % urls.length;
+          paintImg();
+        });
+        nav.appendChild(prev);
+        nav.appendChild(next);
+        imgWrap.appendChild(nav);
+      }
+    };
+    paintImg();
 
     const body = document.createElement("div");
     body.className = "card__body";
@@ -448,6 +490,33 @@ function renderGrid(products, onAdd) {
     const desc = document.createElement("p");
     desc.className = "card__desc";
     desc.textContent = p.description || "Состав и подача — уточняйте у оператора при согласовании.";
+
+    body.appendChild(titleRow);
+    body.appendChild(desc);
+
+    const attrs = Array.isArray(p.attributes) ? p.attributes : [];
+    if (attrs.length) {
+      const ul = document.createElement("ul");
+      ul.className = "card__attrs";
+      for (const a of attrs) {
+        const li = document.createElement("li");
+        const an = a && a.name != null ? String(a.name) : "";
+        const av = a && a.value != null ? String(a.value) : "";
+        li.textContent = av ? `${an}: ${av}` : an;
+        ul.appendChild(li);
+      }
+      body.appendChild(ul);
+    }
+
+    if (p.stock_quantity != null && Number(p.stock_quantity) >= 0) {
+      const st = document.createElement("div");
+      st.className = "card__stock";
+      st.textContent =
+        Number(p.stock_quantity) === 0
+          ? "Нет в наличии"
+          : `Остаток: ${p.stock_quantity} шт.`;
+      body.appendChild(st);
+    }
 
     const footer = document.createElement("div");
     footer.className = "card__footer";
@@ -474,8 +543,6 @@ function renderGrid(products, onAdd) {
     footer.appendChild(price);
     footer.appendChild(addBtn);
 
-    body.appendChild(titleRow);
-    body.appendChild(desc);
     body.appendChild(footer);
 
     card.appendChild(imgWrap);

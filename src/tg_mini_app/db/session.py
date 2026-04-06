@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any
 
-from sqlalchemy.engine import make_url
+from sqlalchemy import event
+from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -13,6 +15,17 @@ from sqlalchemy.ext.asyncio import (
 
 from tg_mini_app.paths import PROJECT_ROOT
 from tg_mini_app.settings import get_settings
+
+
+@event.listens_for(Engine, "connect")
+def _sqlite_enable_foreign_keys(dbapi_conn: Any, connection_record: Any) -> None:
+    """В SQLite по умолчанию FK выключены — без этого не работает ON DELETE RESTRICT."""
+    dialect = getattr(connection_record, "dialect", None)
+    if getattr(dialect, "name", None) != "sqlite":
+        return
+    cursor = dbapi_conn.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
 
 
 def create_engine() -> AsyncEngine:

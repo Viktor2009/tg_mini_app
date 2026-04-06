@@ -75,3 +75,57 @@ class OrderResponse(BaseModel):
     courier_cash_received_at: str | None = None
     courier_delivered_at: str | None = None
 
+
+# --- Управление каталогом (панель оператора) ---
+
+
+class ProductAttributeInput(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    value: str = Field(min_length=0, max_length=512)
+
+
+class ProductImageInput(BaseModel):
+    url: str = Field(min_length=1, max_length=1024)
+
+
+class CategoryCreateBody(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    sort_order: int = 0
+    is_active: bool = True
+
+
+class CategoryPatchBody(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    sort_order: int | None = None
+    is_active: bool | None = None
+
+
+class ProductCreateBody(BaseModel):
+    category_id: int = Field(ge=1)
+    name: str = Field(min_length=1, max_length=256)
+    description: str = ""
+    composition: str = ""
+    weight_g: int | None = None
+    price: Decimal = Field(ge=Decimal("0"))
+    image_url: str = Field(default="", max_length=1024)
+    is_available: bool = True
+    sort_order: int = 0
+    stock_quantity: int | None = Field(default=None, ge=0)
+    attributes: list[ProductAttributeInput] = Field(default_factory=list)
+    images: list[ProductImageInput] = Field(default_factory=list)
+
+
+class ProductPatchBody(BaseModel):
+    category_id: int | None = Field(default=None, ge=1)
+    name: str | None = Field(default=None, min_length=1, max_length=256)
+    description: str | None = None
+    composition: str | None = None
+    weight_g: int | None = None
+    price: Decimal | None = Field(default=None, ge=Decimal("0"))
+    image_url: str | None = Field(default=None, max_length=1024)
+    is_available: bool | None = None
+    sort_order: int | None = None
+    stock_quantity: int | None = Field(default=None, ge=0)
+    attributes: list[ProductAttributeInput] | None = None
+    images: list[ProductImageInput] | None = None
+

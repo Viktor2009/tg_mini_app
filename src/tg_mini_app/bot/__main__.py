@@ -383,7 +383,7 @@ async def main() -> None:
             await session.commit()
 
         await query.answer("Передан в доставку")
-        if query.message is not None:
+        if isinstance(query.message, Message):
             try:
                 await query.message.edit_reply_markup(reply_markup=None)
             except TelegramBadRequest:

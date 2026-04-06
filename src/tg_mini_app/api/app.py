@@ -1,25 +1,28 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from decimal import Decimal
 from typing import Any
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 from starlette.templating import Jinja2Templates
 
 from tg_mini_app.api.cart import router as cart_router
+from tg_mini_app.api.catalog_admin import router as catalog_admin_router
+from tg_mini_app.api.catalog_serialize import product_to_dict
 from tg_mini_app.api.delivery_staff import router as delivery_staff_router
 from tg_mini_app.api.deps import get_db_session
 from tg_mini_app.api.operator_panel import router as operator_panel_router
 from tg_mini_app.api.orders import router as orders_router
 from tg_mini_app.db import models
 from tg_mini_app.db.base import Base
+from tg_mini_app.db.schema_upgrade import run_schema_upgrades
 from tg_mini_app.db.seed import seed_if_empty
 from tg_mini_app.db.session import create_engine, create_sessionmaker
 from tg_mini_app.paths import STATIC_DIR, TEMPLATES_DIR
@@ -66,12 +69,14 @@ def create_app() -> FastAPI:
 
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+        await run_schema_upgrades(engine)
         async with app.state.session_factory() as session:
             await seed_if_empty(session)
 
     app.include_router(cart_router)
     app.include_router(orders_router)
     app.include_router(operator_panel_router)
+    app.include_router(catalog_admin_router)
     app.include_router(delivery_staff_router)
 
     @app.get("/", response_class=HTMLResponse)
@@ -118,10 +123,12 @@ def create_app() -> FastAPI:
     ) -> list[dict[str, Any]]:
         rows = (
             await session.execute(
-                select(models.Category).order_by(
+                select(models.Category)
+                .where(models.Category.is_active.is_(True))
+                .order_by(
                     models.Category.sort_order,
                     models.Category.id,
-                )
+                ),
             )
         ).scalars().all()
         return [
@@ -141,28 +148,24 @@ def create_app() -> FastAPI:
         rows = (
             await session.execute(
                 select(models.Product)
-                .order_by(models.Product.sort_order, models.Product.id)
+                .join(models.Category)
+                .where(
+                    models.Category.is_active.is_(True),
+                    models.Product.is_available.is_(True),
+                    or_(
+                        models.Product.stock_quantity.is_(None),
+                        models.Product.stock_quantity > 0,
+                    ),
+                )
+                .options(
+                    selectinload(models.Product.attributes),
+                    selectinload(models.Product.images),
+                )
+                .order_by(models.Product.sort_order, models.Product.id),
             )
         ).scalars().all()
 
-        def to_decimal(v: Decimal) -> str:
-            return f"{v:.2f}"
-
-        return [
-            {
-                "id": p.id,
-                "category_id": p.category_id,
-                "name": p.name,
-                "description": p.description,
-                "composition": p.composition,
-                "weight_g": p.weight_g,
-                "price": to_decimal(p.price),
-                "image_url": p.image_url,
-                "is_available": p.is_available,
-                "sort_order": p.sort_order,
-            }
-            for p in rows
-        ]
+        return [product_to_dict(p) for p in rows]
 
     @app.get("/debug/last-order")
     async def debug_last_order(

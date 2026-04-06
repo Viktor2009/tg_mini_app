@@ -49,11 +49,52 @@ class Product(Base):
     weight_g: Mapped[int | None] = mapped_column(Integer, nullable=True)
     price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     image_url: Mapped[str] = mapped_column(String(1024), default="", nullable=False)
+    # None — учёт остатка не ведём (не ограничиваем корзину); 0 — нет в наличии.
+    stock_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     is_available: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     category: Mapped[Category] = relationship(back_populates="products")
+    attributes: Mapped[list[ProductAttribute]] = relationship(
+        back_populates="product",
+        cascade="all, delete-orphan",
+        order_by="ProductAttribute.sort_order",
+    )
+    images: Mapped[list[ProductImage]] = relationship(
+        back_populates="product",
+        cascade="all, delete-orphan",
+        order_by="ProductImage.sort_order",
+    )
+
+
+class ProductAttribute(Base):
+    __tablename__ = "product_attributes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    product_id: Mapped[int] = mapped_column(
+        ForeignKey("products.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    value: Mapped[str] = mapped_column(String(512), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    product: Mapped[Product] = relationship(back_populates="attributes")
+
+
+class ProductImage(Base):
+    __tablename__ = "product_images"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    product_id: Mapped[int] = mapped_column(
+        ForeignKey("products.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    url: Mapped[str] = mapped_column(String(1024), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    product: Mapped[Product] = relationship(back_populates="images")
 
 
 class Cart(Base):
