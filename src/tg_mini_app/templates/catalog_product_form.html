@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ title }}</title>
+    <style>
+      :root {
+        --bg: #121218;
+        --card: #1c1c26;
+        --text: #eee;
+        --muted: #9a9aa8;
+        --accent: #e6b422;
+        --border: #2a2a36;
+        --danger: #e05555;
+        --ok: #5cb85c;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        font-size: 14px;
+        line-height: 1.45;
+      }
+      .wrap { max-width: 640px; margin: 0 auto; padding: 16px; }
+      h1 { font-size: 1.2rem; margin: 0 0 8px; }
+      .nav { margin-bottom: 16px; display: flex; gap: 12px; flex-wrap: wrap; }
+      .nav a { color: var(--accent); font-size: 13px; text-decoration: none; }
+      .flash {
+        padding: 10px 12px;
+        border-radius: 8px;
+        margin-bottom: 12px;
+        font-size: 13px;
+      }
+      .flash--ok { background: rgba(92, 184, 92, 0.15); color: var(--ok); }
+      .flash--err { background: rgba(224, 85, 85, 0.15); color: var(--danger); }
+      label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 4px; }
+      input[type="text"], input[type="number"], select, textarea {
+        width: 100%;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: var(--card);
+        color: var(--text);
+        font-size: 14px;
+      }
+      textarea { min-height: 88px; font-family: inherit; }
+      .hint { font-size: 12px; color: var(--muted); margin: 4px 0 0; }
+      .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      @media (max-width: 520px) { .row2 { grid-template-columns: 1fr; } }
+      button {
+        margin-top: 16px;
+        cursor: pointer;
+        padding: 10px 18px;
+        border-radius: 10px;
+        border: 1px solid var(--accent);
+        background: transparent;
+        color: var(--accent);
+        font-weight: 700;
+        font-size: 14px;
+      }
+      button:hover { background: rgba(230, 180, 34, 0.12); }
+      .checkrow { margin-top: 12px; }
+      .checkrow label { display: inline; color: var(--text); margin-left: 6px; }
+      .thumb {
+        max-width: 120px;
+        max-height: 80px;
+        border-radius: 8px;
+        margin-top: 6px;
+        object-fit: cover;
+        border: 1px solid var(--border);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>{{ title }}</h1>
+      <div class="nav">
+        <a href="/operator-panel/catalog-manage">← К списку каталога</a>
+        <a href="/operator-panel">Заказы</a>
+      </div>
+
+      {% if flash_ok %}
+        <div class="flash flash--ok">{{ flash_ok }}</div>
+      {% endif %}
+      {% if flash_err %}
+        <div class="flash flash--err">{{ flash_err }}</div>
+      {% endif %}
+
+      {% if not categories %}
+        <p class="muted">Нет категорий — создайте их в списке каталога.</p>
+      {% else %}
+        <form method="post" action="/operator-panel/catalog-manage/product/save" enctype="multipart/form-data">
+          {% if product %}
+            <input type="hidden" name="product_id" value="{{ product.id }}" />
+          {% endif %}
+
+          <label>Категория *</label>
+          <select name="category_id" required>
+            {% for c in categories %}
+              <option value="{{ c.id }}"
+                {% if product and product.category_id == c.id %}selected{% endif %}
+                {% if not product and prefill_category_id is not none and prefill_category_id == c.id %}selected{% endif %}
+              >{{ c.name }}</option>
+            {% endfor %}
+          </select>
+
+          <label>Название *</label>
+          <input type="text" name="name" required maxlength="256" value="{{ product.name if product else '' }}" />
+
+          <label>Описание</label>
+          <textarea name="description" rows="3">{{ product.description if product else '' }}</textarea>
+
+          <label>Состав (текст)</label>
+          <textarea name="composition" rows="2">{{ product.composition if product else '' }}</textarea>
+
+          <div class="row2">
+            <div>
+              <label>Вес, г (пусто — нет)</label>
+              <input type="text" name="weight_g" inputmode="numeric" placeholder="180" value="{% if product and product.weight_g is not none %}{{ product.weight_g }}{% endif %}" />
+            </div>
+            <div>
+              <label>Цена, ₽ *</label>
+              <input type="text" name="price" required inputmode="decimal" placeholder="350.00" value="{{ product.price if product else '' }}" />
+            </div>
+          </div>
+
+          <div class="row2">
+            <div>
+              <label>Порядок в категории</label>
+              <input type="number" name="sort_order" step="1" value="{{ product.sort_order if product else 0 }}" />
+            </div>
+            <div>
+              <label>Остаток (штук, пусто — без лимита)</label>
+              <input type="text" name="stock_quantity" inputmode="numeric" placeholder="пусто" value="{% if product and product.stock_quantity is not none %}{{ product.stock_quantity }}{% endif %}" />
+            </div>
+          </div>
+
+          <label>Главное фото (URL, опционально)</label>
+          <input type="text" name="image_url" placeholder="https://… или оставьте пусто — возьмём первое из галереи" value="{{ product.image_url if product else '' }}" />
+          {% if product and product.image_url %}
+            <img class="thumb" src="{{ product.image_url }}" alt="" referrerpolicy="no-referrer" />
+          {% endif %}
+
+          <label>Характеристики</label>
+          <p class="hint">По одной строке: <code>Название: значение</code> или <code>Название=значение</code>. Строки с # — комментарий.</p>
+          <textarea name="attributes_text" rows="5" placeholder="Острое: Нет&#10;Порций: 8">{{ attributes_text }}</textarea>
+
+          <label>Галерея — URL картинок</label>
+          <p class="hint">По одному URL в строке. Можно дополнить загрузкой файлов ниже.</p>
+          <textarea name="image_urls_text" rows="4" placeholder="https://…">{{ image_urls_text }}</textarea>
+
+          <label>Загрузить фото с устройства</label>
+          <p class="hint">JPEG, PNG, WebP, GIF до 5 МБ. Файлы добавятся в галерею (в конец).</p>
+          <input type="file" name="new_images" accept="image/jpeg,image/png,image/webp,image/gif" multiple />
+
+          <div class="checkrow">
+            <input type="checkbox" name="is_available" id="isav" {% if not product or product.is_available %}checked{% endif %} />
+            <label for="isav">Показывать на витрине</label>
+          </div>
+
+          <button type="submit">{% if is_new %}Создать товар{% else %}Сохранить{% endif %}</button>
+        </form>
+      {% endif %}
+    </div>
+  </body>
+</html>

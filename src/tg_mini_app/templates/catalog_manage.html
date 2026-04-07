@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ title }}</title>
+    <style>
+      :root {
+        --bg: #121218;
+        --card: #1c1c26;
+        --text: #eee;
+        --muted: #9a9aa8;
+        --accent: #e6b422;
+        --border: #2a2a36;
+        --danger: #e05555;
+        --ok: #5cb85c;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        font-size: 14px;
+        line-height: 1.4;
+      }
+      .wrap { max-width: 1100px; margin: 0 auto; padding: 16px; }
+      h1 { font-size: 1.25rem; margin: 0 0 8px; }
+      h2 { font-size: 1.05rem; margin: 24px 0 12px; color: var(--muted); font-weight: 700; }
+      .nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 16px;
+        align-items: center;
+      }
+      .nav a { color: var(--accent); text-decoration: none; font-size: 13px; }
+      .nav a:hover { text-decoration: underline; }
+      .flash {
+        padding: 10px 12px;
+        border-radius: 8px;
+        margin-bottom: 12px;
+        font-size: 13px;
+      }
+      .flash--ok { background: rgba(92, 184, 92, 0.15); color: var(--ok); }
+      .flash--err { background: rgba(224, 85, 85, 0.15); color: var(--danger); }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        background: var(--card);
+        border-radius: 12px;
+        overflow: hidden;
+        margin-bottom: 8px;
+      }
+      th, td {
+        padding: 8px 10px;
+        text-align: left;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+        font-size: 13px;
+      }
+      th { font-size: 11px; text-transform: uppercase; color: var(--muted); }
+      tr:last-child td { border-bottom: none; }
+      input[type="text"], input[type="number"], select {
+        width: 100%;
+        max-width: 220px;
+        padding: 6px 8px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: var(--bg);
+        color: var(--text);
+        font-size: 13px;
+      }
+      .check { width: auto; max-width: none; }
+      button {
+        cursor: pointer;
+        padding: 6px 10px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: #2a2a38;
+        color: var(--text);
+        font-size: 12px;
+      }
+      button.primary { border-color: var(--accent); color: var(--accent); }
+      button.danger { border-color: var(--danger); color: var(--danger); }
+      .actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+      .muted { color: var(--muted); font-size: 12px; }
+      .card-add {
+        background: var(--card);
+        padding: 14px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        margin-bottom: 20px;
+      }
+      .card-add h3 { margin: 0 0 10px; font-size: 14px; }
+      .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 8px; }
+      .field label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>{{ title }}</h1>
+      <div class="nav">
+        <a href="/operator-panel">← Заказы</a>
+        <a href="/operator-panel/catalog-manage">Каталог</a>
+        <a href="/operator-panel/logout">Выход</a>
+      </div>
+
+      {% if flash_ok %}
+        <div class="flash flash--ok">{{ flash_ok }}</div>
+      {% endif %}
+      {% if flash_err %}
+        <div class="flash flash--err">{{ flash_err }}</div>
+      {% endif %}
+
+      <h2>Категории</h2>
+      <div class="card-add">
+        <h3>Новая категория</h3>
+        <form method="post" action="/operator-panel/catalog-manage/categories" class="row">
+          <div class="field">
+            <label>Название</label>
+            <input type="text" name="name" required maxlength="128" placeholder="Например: Роллы" />
+          </div>
+          <div class="field">
+            <label>Порядок</label>
+            <input type="number" name="sort_order" value="0" step="1" />
+          </div>
+          <div class="field">
+            <label><input type="checkbox" name="is_active" class="check" checked /> на сайте</label>
+          </div>
+          <button type="submit" class="primary">Добавить</button>
+        </form>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Название · порядок · на сайте</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in categories %}
+            <tr>
+              <td>{{ c.id }}</td>
+              <td>
+                <form method="post" action="/operator-panel/catalog-manage/categories/{{ c.id }}" class="actions">
+                  <input type="text" name="name" value="{{ c.name }}" required maxlength="128" style="max-width: 280px" />
+                  <input type="number" name="sort_order" value="{{ c.sort_order }}" step="1" style="width: 72px" />
+                  <label class="muted"><input type="checkbox" name="is_active" class="check" {% if c.is_active %}checked{% endif %} /> активна</label>
+                  <button type="submit" class="primary">Сохранить</button>
+                </form>
+              </td>
+              <td>
+                <form method="post" action="/operator-panel/catalog-manage/categories/{{ c.id }}/delete" onsubmit="return confirm('Удалить категорию «{{ c.name }}»? Только если нет товаров.');">
+                  <button type="submit" class="danger">Удалить</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <h2>Товары</h2>
+      <form method="get" action="/operator-panel/catalog-manage" class="row" style="margin-bottom: 12px;">
+        <div class="field">
+          <label>Фильтр по категории</label>
+          <select name="category_id" onchange="this.form.submit()">
+            <option value="">Все</option>
+            {% for c in categories %}
+              <option value="{{ c.id }}" {% if filter_category_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </form>
+
+      <p><a href="/operator-panel/catalog-manage/product/new{% if filter_category_id %}?category_id={{ filter_category_id }}{% endif %}"><button type="button" class="primary" style="margin-bottom: 12px;">+ Новый товар</button></a></p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Название</th>
+            <th>Категория</th>
+            <th>Цена</th>
+            <th>Остаток</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in products %}
+            <tr>
+              <td>{{ p.id }}</td>
+              <td>{{ p.name }}{% if not p.is_available %} <span class="muted">(скрыт)</span>{% endif %}</td>
+              <td class="muted">{{ p.category_id }}</td>
+              <td>{{ p.price }} ₽</td>
+              <td class="muted">{% if p.stock_quantity is not none %}{{ p.stock_quantity }}{% else %}—{% endif %}</td>
+              <td class="actions">
+                <a href="/operator-panel/catalog-manage/product/{{ p.id }}"><button type="button">Изменить</button></a>
+                <form method="post" action="/operator-panel/catalog-manage/product/{{ p.id }}/delete" style="display:inline" onsubmit="return confirm('Удалить товар «{{ p.name }}»?');">
+                  <button type="submit" class="danger">Удалить</button>
+                </form>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="6" class="muted">Нет товаров{% if filter_category_id %} в этой категории{% endif %}.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <p class="muted" style="margin-top: 20px;">
+        Фото из панели доступны по URL вида <code>{{ media_prefix }}/…</code> (тот же домен, что у сайта).
+      </p>
+    </div>
+  </body>
+</html>

@@ -15,6 +15,7 @@ from starlette.templating import Jinja2Templates
 
 from tg_mini_app.api.cart import router as cart_router
 from tg_mini_app.api.catalog_admin import router as catalog_admin_router
+from tg_mini_app.api.catalog_panel import router as catalog_panel_router
 from tg_mini_app.api.catalog_serialize import product_to_dict
 from tg_mini_app.api.delivery_staff import router as delivery_staff_router
 from tg_mini_app.api.deps import get_db_session
@@ -25,7 +26,7 @@ from tg_mini_app.db.base import Base
 from tg_mini_app.db.schema_upgrade import run_schema_upgrades
 from tg_mini_app.db.seed import seed_if_empty
 from tg_mini_app.db.session import create_engine, create_sessionmaker
-from tg_mini_app.paths import STATIC_DIR, TEMPLATES_DIR
+from tg_mini_app.paths import CATALOG_UPLOADS_DIR, STATIC_DIR, TEMPLATES_DIR
 from tg_mini_app.settings import get_settings
 
 # Telegram WebView сильно кеширует HTML мини-приложения; без этого остаётся старый
@@ -57,6 +58,12 @@ def create_app() -> FastAPI:
     app.state.session_factory = create_sessionmaker(engine)
 
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+    CATALOG_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    app.mount(
+        "/catalog-media",
+        StaticFiles(directory=str(CATALOG_UPLOADS_DIR)),
+        name="catalog-media",
+    )
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
     @app.on_event("startup")
@@ -77,6 +84,7 @@ def create_app() -> FastAPI:
     app.include_router(orders_router)
     app.include_router(operator_panel_router)
     app.include_router(catalog_admin_router)
+    app.include_router(catalog_panel_router)
     app.include_router(delivery_staff_router)
 
     @app.get("/", response_class=HTMLResponse)
@@ -89,7 +97,8 @@ def create_app() -> FastAPI:
     <li><a href="/webapp">Mini App (витрина)</a></li>
     <li><a href="/operator-panel">Панель оператора</a> — откроется
       <a href="/operator-panel/login">форма входа</a> или HTTP Basic:
-      логин <code>operator</code>, пароль = <code>OPERATOR_PANEL_TOKEN</code></li>
+      логин <code>operator</code>, пароль = <code>OPERATOR_PANEL_TOKEN</code>;
+      <a href="/operator-panel/catalog-manage">редактор каталога</a></li>
     <li><a href="/delivery/login">Страница курьера</a> (секрет =
       <code>COURIER_API_TOKEN</code>)</li>
     <li><a href="/operator-panel/ping">Проверка панели (JSON, без пароля)</a></li>
