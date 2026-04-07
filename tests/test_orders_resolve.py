@@ -19,7 +19,7 @@ def _s(**overrides: object) -> Settings:
         "webapp_init_max_age_sec": 86400,
     }
     data.update(overrides)
-    return Settings.model_construct(**data)
+    return Settings.model_construct(None, **data)
 
 
 class TestResolveCustomerTgId(unittest.TestCase):

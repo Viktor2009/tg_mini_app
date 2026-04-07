@@ -1,7 +1,19 @@
 /* global Telegram */
 
 const apiBase = "";
-const APP_VERSION = "v11";
+
+function getAppVersion() {
+  // Для отладки: если забыли обновить константу, покажем версию по ?v= у скрипта.
+  try {
+    const src = document.currentScript && document.currentScript.src;
+    if (!src) return "dev";
+    const u = new URL(src, window.location.href);
+    const v = u.searchParams.get("v");
+    return v ? `v${v}` : "dev";
+  } catch {
+    return "dev";
+  }
+}
 
 /**
  * Демо при пустом image_url. Commons, CC BY 2.0 (Tim Reckmann) — указать автора в проде.
@@ -68,14 +80,14 @@ function byId(id) {
 
 function setHint(text) {
   const hint = byId("checkoutHint");
-  if (hint) hint.textContent = `[${APP_VERSION}] ${text}`;
+  if (hint) hint.textContent = `[${getAppVersion()}] ${text}`;
 }
 
 let _orderPollTimer = null;
 
 function stopOrderPolling() {
   if (_orderPollTimer) {
-    clearInterval(_orderPollTimer);
+    clearTimeout(_orderPollTimer);
     _orderPollTimer = null;
   }
 }
@@ -135,6 +147,12 @@ function renderOrderStatus(order) {
   el.textContent = `Заказ #${order.id}: ${paidLine(order)}${ru}${payExtra}${route}`;
   if (banner) banner.hidden = false;
   renderOrderLines(order);
+  const hintEl = byId("orderHint");
+  if (hintEl) {
+    const hint = orderStatusHint(order);
+    hintEl.hidden = !hint;
+    hintEl.textContent = hint || "";
+  }
   const cancelBtn = byId("cancelOrderBtn");
   // «Отменить заказ» только после отправки на согласование (ожидание оператора).
   if (cancelBtn) cancelBtn.hidden = order.status !== "pending_operator";
@@ -144,6 +162,30 @@ function renderOrderStatus(order) {
     subst.hidden = order.status !== "pending_customer_substitution";
   }
   syncTabsStickyUnderBanner();
+}
+
+function orderStatusHint(order) {
+  // Короткие подсказки “что делать пользователю дальше”.
+  switch (order.status) {
+    case "pending_operator":
+      return "Мы отправили заказ оператору. Обычно ответ приходит в Telegram в течение пары минут.";
+    case "pending_operator_change_text":
+      return "Оператор готовит правки. Подождите: дальше бот пришлёт сообщение клиенту.";
+    case "pending_customer_change_accept":
+      return "Откройте чат с ботом: там сообщение с правками и кнопками «Да/Нет».";
+    case "pending_customer_substitution":
+      return "Нужен ваш ответ по заменам: выберите «Принять замену» или «Отменить замену».";
+    case "awaiting_payment":
+      return "Откройте чат с ботом и выберите способ оплаты, чтобы заказ стал активным.";
+    case "active":
+      return "Заказ принят. Ожидайте — оператор передаст его в доставку.";
+    case "out_for_delivery":
+      return "Заказ в пути. Если нужно уточнить адрес/подъезд — напишите оператору в Telegram.";
+    case "delivered":
+      return "Спасибо! Если что-то не так с заказом — напишите оператору, мы поможем.";
+    default:
+      return "";
+  }
 }
 
 function _orderFetchLooksLikeMissing(msg) {
@@ -175,19 +217,70 @@ async function refreshOrderStatusOnce(orderId) {
     if (el) {
       el.textContent = `Заказ: не удалось обновить статус (${String(e)})`;
     }
+    const hintEl = byId("orderHint");
+    if (hintEl) {
+      hintEl.hidden = false;
+      hintEl.textContent = "Проверьте интернет. Мы попробуем обновить статус ещё раз автоматически.";
+    }
     syncTabsStickyUnderBanner();
     return null;
   }
 }
 
+let _pollDelayMs = 1500;
+let _pollFailures = 0;
+let _pollOrderId = null;
+
+function _nextPollDelayMs(order) {
+  // Быстрее сразу после события; реже при долгом ожидании/доставке.
+  const minMs = 1500;
+  const maxMs = 30000;
+
+  if (!order) {
+    // Ошибка сети/сервера: экспоненциальный backoff.
+    _pollFailures = Math.min(_pollFailures + 1, 8);
+    const d = Math.min(minMs * 2 ** _pollFailures, maxMs);
+    return d;
+  }
+
+  _pollFailures = 0;
+
+  if (ORDER_POLL_TERMINAL.has(order.status)) return 0;
+  if (order.status === "pending_operator") return 3000;
+  if (order.status === "awaiting_payment") return 5000;
+  if (order.status === "active") return 8000;
+  if (order.status === "out_for_delivery") return 15000;
+  return 5000;
+}
+
 function startOrderPolling(orderId) {
   stopOrderPolling();
-  void refreshOrderStatusOnce(orderId);
-  _orderPollTimer = setInterval(async () => {
+  _pollOrderId = orderId;
+  _pollDelayMs = 1500;
+
+  const tick = async () => {
+    if (_pollOrderId !== orderId) return;
     const o = await refreshOrderStatusOnce(orderId);
-    if (o && ORDER_POLL_TERMINAL.has(o.status)) stopOrderPolling();
-  }, 5000);
+    const next = _nextPollDelayMs(o);
+    if (!next) {
+      stopOrderPolling();
+      return;
+    }
+    _pollDelayMs = next;
+    _orderPollTimer = setTimeout(tick, _pollDelayMs);
+  };
+
+  void tick();
 }
+
+document.addEventListener("visibilitychange", () => {
+  // В Telegram WebView иногда фоновые таймеры “дёргаются”; пауза экономит батарею.
+  if (document.hidden) {
+    stopOrderPolling();
+    return;
+  }
+  if (_pollOrderId) startOrderPolling(_pollOrderId);
+});
 
 async function apiGet(path, extraHeaders = {}) {
   const r = await fetch(`${apiBase}${path}`, {

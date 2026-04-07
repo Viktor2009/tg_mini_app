@@ -179,6 +179,13 @@ a { color: var(--text); }
   letter-spacing: -0.01em;
 }
 
+.order-banner__hint {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
 /* Как у «В корзину» (.product-card__add): акцент, скругление, тень. */
 .order-banner__cancel {
   display: block;

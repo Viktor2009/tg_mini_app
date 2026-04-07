@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import Any
+from contextlib import asynccontextmanager
+from typing import Any, cast
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse
@@ -50,10 +51,36 @@ class _MiniAppAssetsNoCacheMiddleware(BaseHTTPMiddleware):
 
 def create_app() -> FastAPI:
     # Без этого /operator-panel/ даёт 307 без Basic → белый экран в браузере.
-    app = FastAPI(title="tg_mini_app", redirect_slashes=False)
-    app.add_middleware(_MiniAppAssetsNoCacheMiddleware)
-
     engine = create_engine()
+
+    @asynccontextmanager
+    async def _lifespan(_app: FastAPI) -> Any:
+        settings = get_settings()
+        if settings.bot_token.strip():
+            # local import to keep API start lightweight
+            from aiogram import Bot
+
+            _app.state.bot = Bot(token=settings.bot_token)
+
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        await run_schema_upgrades(engine)
+        async with _app.state.session_factory() as session:
+            await seed_if_empty(session)
+
+        yield
+
+        bot = getattr(_app.state, "bot", None)
+        if bot is not None:
+            # Aiogram v3: Bot.close() is async and closes underlying HTTP session.
+            await cast(Any, bot).close()
+
+    app = FastAPI(
+        title="tg_mini_app",
+        redirect_slashes=False,
+        lifespan=_lifespan,
+    )
+    app.add_middleware(_MiniAppAssetsNoCacheMiddleware)
     app.state.engine = engine
     app.state.session_factory = create_sessionmaker(engine)
 
@@ -65,20 +92,6 @@ def create_app() -> FastAPI:
         name="catalog-media",
     )
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
-
-    @app.on_event("startup")
-    async def _startup() -> None:
-        settings = get_settings()
-        if settings.bot_token.strip():
-            from aiogram import Bot  # local import to keep API start lightweight
-
-            app.state.bot = Bot(token=settings.bot_token)
-
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        await run_schema_upgrades(engine)
-        async with app.state.session_factory() as session:
-            await seed_if_empty(session)
 
     app.include_router(cart_router)
     app.include_router(orders_router)
