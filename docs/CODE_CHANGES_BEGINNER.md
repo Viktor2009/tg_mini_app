@@ -22,22 +22,27 @@ cd C:\tg_mini_app
 
 ### Короткая проверка тестов
 
-Один способ (из корня репозитория), если интерпретатор Python уже настроен и зависимости установлены:
+Один способ (из корня репозитория): виртуальное окружение активировано, выполнены **`pip install -r requirements.txt`** и **`pip install -e .`** (тогда пакет **`tg_mini_app`** уже в пути интерпретатора).
+
+```powershell
+python -m pytest tests -q
+```
+
+- **`pytest`** входит в **`requirements.txt`**; **`-q`** — менее подробный вывод.
+
+Если по каким-то причинам **не** ставили проект командой **`pip install -e .`**, можно один раз для сессии задать путь к исходникам:
 
 ```powershell
 $env:PYTHONPATH = "$PWD\src"
-python -m pytest tests/ -q
+python -m pytest tests -q
 ```
-
-- **`$env:PYTHONPATH = "$PWD\src"`** ---> в этой сессии Python видит пакет **`tg_mini_app`** из папки **`src`** (как в проектной практике).
-- **`python -m pytest tests/ -q`** ---> запустить тесты; **`-q`** — менее подробный вывод.
 
 Если **`python`** не находится, попробуйте **`py -3.12`** или **`py -3.13`** вместо **`python`** — как у вас установлено.
 
 Опционально (если ставили **ruff** / **mypy**):
 
 ```powershell
-python -m ruff check src/tg_mini_app
+python -m ruff check src tests
 python -m mypy src/tg_mini_app
 ```
 

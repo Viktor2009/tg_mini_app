@@ -63,7 +63,7 @@
     ┌─────────────┐        ┌─────────────┐        ┌─────────────┐
     │ Подключает  │        │ startup:    │        │ Отдаёт      │
     │ роутеры     │        │ create_all, │        │ /static,    │
-    │ (см. §3)    │        │ seed, bot   │        │ Jinja2      │
+    │ (раздел 3)  │        │ seed, bot   │        │ Jinja2      │
     └─────────────┘        └─────────────┘        └─────────────┘
 ```
 
@@ -121,7 +121,7 @@
 | Получает | Отправляет | Логика |
 |----------|------------|--------|
 | Создание заказа: `cart_id`, адрес, время, **initData** / `customer_tg_id` | `OrderResponse` (статус, позиции, маршрут оплаты и т.д.) | **`order_flow`** (статусы, допуски), **`order_meta`** (нормализация строк заказа), **`telegram_keyboards`** (клавиатуры в сообщениях) |
-| Подпути: `/cancel`, `/substitutions/accept`, `/reject` | Обновлённый заказ | Те же + запись в **`order.meta`** |
+| Подпути: `/{id}/cancel`, `/{id}/substitutions/accept`, `/{id}/substitutions/reject` | Обновлённый заказ | Те же + запись в **`order.meta`** |
 
 ---
 
@@ -149,12 +149,14 @@
 
 ---
 
-### 3.4. `api/catalog_admin.py` — CRUD каталога (тот же доступ, что панель)
+### 3.4. `api/catalog_admin.py` — JSON CRUD каталога (панель оператора)
+
+Префикс роутера: **`/operator-panel/catalog`**. Тот же контроль доступа, что у **`operator_panel`** (**`require_operator_panel_auth`**: cookie после **`/operator-panel/login`** или HTTP Basic **`operator`** + **`OPERATOR_PANEL_TOKEN`**).
 
 ```
      ┌───────────────┐
      │ catalog_admin │  GET/POST/PATCH/DELETE
-     │ /operator-    │  /catalog/categories, /products
+     │ /operator-    │  …/categories, …/products (JSON)
      │ panel/catalog │
      └───────┬───────┘
              │
@@ -171,7 +173,19 @@
 
 ---
 
-### 3.5. Витрина в `app.py` (не отдельный файл)
+### 3.5. `api/catalog_panel.py` — HTML-редактор каталога и загрузка файлов
+
+Префикс: **`/operator-panel/catalog-manage`**. Формы (Jinja2 **`catalog_manage.html`**, **`catalog_product_form.html`**), загрузка картинок через **`catalog_uploads.save_catalog_image`** в каталог **`catalog-media`** (смонтирован в **`app.py`** как **`StaticFiles`**).
+
+| Получает | Отправляет |
+|----------|------------|
+| `multipart/form-data`, редиректы после POST | HTML или **303 Redirect** на список с `?ok=` / `?err=` |
+
+Дублирования бизнес-логики с **`catalog_admin`** нет полного — веб-форма опирается на те же **`models`** и похожие операции с БД, но маршруты и формат ответа другие (HTML вместо JSON).
+
+---
+
+### 3.6. Витрина в `app.py` (не отдельный файл)
 
 ```
      GET /catalog/categories
@@ -179,29 +193,32 @@
                                   ──► product_to_dict()
 ```
 
-Публичный каталог **без** пароля; админ-листинг — в **`catalog_admin`**.
+Публичный каталог **без** пароля; управление ассортиментом — в **`catalog_admin`** и **`catalog_panel`**.
 
 ---
 
-### 3.6. `api/delivery_staff.py` — API курьера
+### 3.7. `api/delivery_staff.py` — панель и API курьера
 
 ```
-  ?token=COURIER_API_TOKEN
+  COURIER_API_TOKEN (пусто → 404 на /delivery)
             │
             ▼
      ┌──────────────┐
-     │ delivery_    │──────► смена статусов доставки, отметки оплаты
-     │ staff.py     │        (order_flow + meta курьера)
+     │ delivery_    │──────► HTML /delivery/login, cookie сессии
+     │ staff.py     │──────► JSON API ?token=… (список заказов, delivered, cash-received)
      └──────────────┘
+             │
+             ▼
+     order_flow (out_for_delivery → delivered), order_meta (курьерские поля)
 ```
 
 | Получает | Отправляет |
 |----------|------------|
-| Секрет в query, тело запросов по маршрутам | JSON; ошибки 401/403 при неверном токене |
+| Секрет в query или cookie после **`/delivery/login`** | JSON или HTML; **401/403** при неверном токене |
 
 ---
 
-### 3.7. Вспомогательные модули API (без отдельного префикса «роутера»)
+### 3.8. Вспомогательные модули API (без отдельного префикса «роутера»)
 
 ```
   ┌────────────────────┐
