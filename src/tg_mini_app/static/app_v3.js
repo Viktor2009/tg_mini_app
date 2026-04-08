@@ -78,6 +78,29 @@ function byId(id) {
   return document.getElementById(id);
 }
 
+/**
+ * Ссылка «Помощь»: чат с оператором (OPERATOR_USERNAME из .env → шаблон).
+ * В Telegram WebView открываем через openTelegramLink; иначе обычный переход на t.me.
+ */
+function setupHelpLink() {
+  const el = byId("helpLink");
+  if (!el || !(el instanceof HTMLAnchorElement)) return;
+  const raw = (el.dataset.tgUser || "").trim().replace(/^@/, "");
+  if (!raw) {
+    el.hidden = true;
+    return;
+  }
+  const url = `https://t.me/${encodeURIComponent(raw)}`;
+  el.href = url;
+  el.addEventListener("click", (e) => {
+    const wa = window.Telegram?.WebApp;
+    if (wa && typeof wa.openTelegramLink === "function") {
+      e.preventDefault();
+      wa.openTelegramLink(url);
+    }
+  });
+}
+
 function setHint(text) {
   const hint = byId("checkoutHint");
   if (hint) hint.textContent = `[${getAppVersion()}] ${text}`;
@@ -704,6 +727,7 @@ function renderCart(cart, onDelta) {
 
 async function main() {
   setThemeFromTelegram();
+  setupHelpLink();
   setHint("Приложение загружено.");
 
   const checkoutBtn = byId("checkoutBtn");

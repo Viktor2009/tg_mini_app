@@ -126,10 +126,17 @@ def create_app() -> FastAPI:
     async def webapp(request: Request) -> Any:
         settings = get_settings()
         app_env = (settings.app_env or "local").strip().lower()
+        op = (settings.operator_username or "").strip()
+        if op.startswith("@"):
+            op = op[1:]
         resp = templates.TemplateResponse(
             request=request,
             name="webapp.html",
-            context={"title": "Суши • Mini App", "app_env": app_env},
+            context={
+                "title": "Суши • Mini App",
+                "app_env": app_env,
+                "operator_telegram_username": op,
+            },
         )
         resp.headers["Cache-Control"] = _NO_STORE
         resp.headers["Pragma"] = "no-cache"

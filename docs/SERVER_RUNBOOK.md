@@ -216,6 +216,34 @@ cp /root/tg_mini_app_backups/app_НУЖНАЯ_ДАТА.db /srv/tg_mini_app/data/
 sudo systemctl start tg-mini-app-api.service tg-mini-app-bot.service
 ```
 
+### Регулярный бэкап по расписанию (**cron**)
+
+В репозитории есть **`deploy/backup-sqlite.sh`**: копирует файл SQLite и **`.env`** в **`/root/tg_mini_app_backups/`** (каталоги можно переопределить переменными ниже).
+
+- `chmod +x /srv/tg_mini_app/deploy/backup-sqlite.sh` ---> один раз сделать скрипт исполняемым.
+
+Проверка вручную **без** остановки служб (быстрый вариант):
+
+- `bash /srv/tg_mini_app/deploy/backup-sqlite.sh` ---> в конце строка **`OK:`** и путь к **`app_….db`**.
+
+С **короткой остановкой** API и бота на время копии (предпочтительнее при постоянном потоке заказов):
+
+- `TG_MINI_APP_BACKUP_STOP_SERVICES=1 bash /srv/tg_mini_app/deploy/backup-sqlite.sh`
+
+Если путь к БД не **`$ROOT/data/app.db`**, задайте **`TG_MINI_APP_DB=/полный/путь/app.db`**. Корень проекта — **`TG_MINI_APP_ROOT`** (по умолчанию **`/srv/tg_mini_app`**).
+
+В конце скрипт удаляет **`app_*.db`** в каталоге бэкапов **старше 14 суток**; срок меняется через **`TG_MINI_APP_BACKUP_RETAIN_DAYS`**.
+
+**Пример cron** (от **root**, каждый день в **03:15**, лог в файл):
+
+```text
+15 3 * * * TG_MINI_APP_BACKUP_STOP_SERVICES=1 /srv/tg_mini_app/deploy/backup-sqlite.sh >>/var/log/tg_mini_app_backup.log 2>&1
+```
+
+Создать пустой лог и ограничить права (по желанию):
+
+- `sudo touch /var/log/tg_mini_app_backup.log && sudo chmod 600 /var/log/tg_mini_app_backup.log`
+
 ---
 
 ## 6. Контроль: всё ли работает
@@ -539,7 +567,7 @@ $env:TG_MINI_APP_DEPLOY_SSH = "root@ВАШ_IP"
 - **Структура кода и маршруты** — **`docs/ARCHITECTURE_MODULES.md`**; **ТЗ и дорожная карта** — **`docs/PLAN.md`**.
 - **Запуск локально (Windows)** — разделы **2** и **4**.
 - **Запуск на VPS** — разделы **2**, **4**, **7**.
-- **Перед обновлением на VPS** — резервная копия **`data/app.db`** и **`.env`** (раздел **5**, подраздел в конце).
+- **Перед обновлением на VPS** — резервная копия **`data/app.db`** и **`.env`** (раздел **5**); **регулярно** — **`deploy/backup-sqlite.sh`** + **cron** (подраздел **«Регулярный бэкап»** там же).
 - **Кнопки в боте не работают** — раздел **6** и оба процесса из раздела **4** / службы из раздела **7**.
 - **Залить правки на GitHub** — раздел **8.2**.
 - **Обновить код на сервере** — раздел **8.4**, скрипт **`deploy/server-update.sh`**.
