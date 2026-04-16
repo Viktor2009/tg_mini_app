@@ -7,6 +7,7 @@ from typing import Any, cast
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -100,6 +101,12 @@ def create_app() -> FastAPI:
     app.include_router(catalog_panel_router)
     app.include_router(delivery_staff_router)
 
+    class TelegramDebugResponse(BaseModel):
+        bot_configured: bool
+        get_me_ok: bool
+        username: str | None = None
+        error: str | None = None
+
     @app.get("/", response_class=HTMLResponse)
     async def root_page() -> str:
         return """<!doctype html>
@@ -145,6 +152,36 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/debug/telegram", response_model=TelegramDebugResponse)
+    async def debug_telegram(request: Request) -> TelegramDebugResponse:
+        """
+        Проверка, может ли текущий API-процесс достучаться до Telegram API.
+
+        Полезно для диагностики:
+        - BOT_TOKEN не задан (бот не инициализирован в API)
+        - исходящий доступ к api.telegram.org блокируется/ломается на сервере
+        """
+        bot = getattr(request.app.state, "bot", None)
+        if bot is None:
+            return TelegramDebugResponse(
+                bot_configured=False,
+                get_me_ok=False,
+                error="BOT_TOKEN пустой: Bot не создан в API процессе",
+            )
+        try:
+            me = await bot.get_me()
+        except Exception as e:  # noqa: BLE001 - диагностика сети/доступа
+            return TelegramDebugResponse(
+                bot_configured=True,
+                get_me_ok=False,
+                error=repr(e),
+            )
+        return TelegramDebugResponse(
+            bot_configured=True,
+            get_me_ok=True,
+            username=getattr(me, "username", None),
+        )
 
     @app.get("/catalog/categories")
     async def list_categories(

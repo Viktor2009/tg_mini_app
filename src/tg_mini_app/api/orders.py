@@ -148,12 +148,22 @@ async def _notify_operator_if_possible(
 ) -> None:
     bot: Bot | None = getattr(request.app.state, "bot", None)
     if bot is None:
+        meta = dict(order.meta or {})
+        meta["operator_notify_error"] = (
+            "BOT_TOKEN не задан в процессе API: уведомление оператору не отправлено"
+        )
+        order.meta = meta
         return
 
     settings = get_settings()
     operator_chat_id = settings.operator_chat_id
     operator_username = settings.operator_username.strip()
     if operator_chat_id is None and not operator_username:
+        meta = dict(order.meta or {})
+        meta["operator_notify_error"] = (
+            "Не задан OPERATOR_CHAT_ID/OPERATOR_USERNAME: уведомление оператору не отправлено"
+        )
+        order.meta = meta
         return
 
     items_lines: list[str] = []
@@ -186,8 +196,8 @@ async def _notify_operator_if_possible(
     except Exception as e:
         # Не прерываем создание заказа, но фиксируем ошибку для диагностики.
         # В проде здесь будет нормальный логгер.
-        meta = dict(order.meta)
-        meta["operator_notify_error"] = repr(e)
+        meta = dict(order.meta or {})
+        meta["operator_notify_error"] = f"Telegram send_message failed: {e!r}"
         order.meta = meta
         request.state._operator_notify_error = repr(e)
 
