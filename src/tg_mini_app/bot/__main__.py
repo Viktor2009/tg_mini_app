@@ -7,7 +7,8 @@ import time
 from typing import Any
 
 from aiogram import Bot, Dispatcher, F
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError
 from aiogram.filters import Command, CommandObject
 from aiogram.types import (
     BotCommand,
@@ -111,41 +112,46 @@ async def _configure_menu_and_commands(bot: Bot, settings: Settings) -> None:
     """
 
     webapp_url = f"{settings.base_url.rstrip('/')}/webapp"
-    if webapp_url.startswith("https://"):
-        await bot.set_chat_menu_button(
-            menu_button=MenuButtonWebApp(
-                text="Меню",
-                web_app=WebAppInfo(url=webapp_url),
+    try:
+        if webapp_url.startswith("https://"):
+            await bot.set_chat_menu_button(
+                menu_button=MenuButtonWebApp(
+                    text="Меню",
+                    web_app=WebAppInfo(url=webapp_url),
+                )
             )
-        )
 
-    await bot.set_my_commands(
-        [
-            BotCommand(command="start", description="Открыть меню заказа"),
-            BotCommand(command="help", description="Справка по командам"),
-            BotCommand(command="app", description="Ссылка на Mini App"),
-            BotCommand(command="operator", description="Контакт оператора"),
-            BotCommand(command="id", description="Мой Telegram ID"),
-        ]
-    )
-    if settings.operator_chat_id is not None:
         await bot.set_my_commands(
             [
-                BotCommand(
-                    command="ship",
-                    description="Передан в доставку: /ship N",
-                ),
-                BotCommand(
-                    command="delivery",
-                    description="То же: /delivery N",
-                ),
-                BotCommand(
-                    command="delivered",
-                    description="Вручён клиенту: /delivered N",
-                ),
-            ],
-            scope=BotCommandScopeChat(chat_id=settings.operator_chat_id),
+                BotCommand(command="start", description="Открыть меню заказа"),
+                BotCommand(command="help", description="Справка по командам"),
+                BotCommand(command="app", description="Ссылка на Mini App"),
+                BotCommand(command="operator", description="Контакт оператора"),
+                BotCommand(command="id", description="Мой Telegram ID"),
+            ]
         )
+        if settings.operator_chat_id is not None:
+            await bot.set_my_commands(
+                [
+                    BotCommand(
+                        command="ship",
+                        description="Передан в доставку: /ship N",
+                    ),
+                    BotCommand(
+                        command="delivery",
+                        description="То же: /delivery N",
+                    ),
+                    BotCommand(
+                        command="delivered",
+                        description="Вручён клиенту: /delivered N",
+                    ),
+                ],
+                scope=BotCommandScopeChat(chat_id=settings.operator_chat_id),
+            )
+    except TelegramNetworkError as exc:
+        # Сеть до Telegram может быть недоступна (блокировки/прокси/временные проблемы).
+        # Не падаем: бот продолжит старт и будет пытаться работать дальше.
+        _log.warning("Telegram API is not reachable during startup: %s", exc)
 
 
 def _require_token(token: str) -> str:
@@ -221,7 +227,9 @@ async def main() -> None:
             format="%(levelname)s %(name)s %(message)s",
         )
     settings = get_settings()
-    bot = Bot(token=_require_token(settings.bot_token))
+    proxy = (settings.telegram_proxy or "").strip()
+    session = AiohttpSession(proxy=proxy) if proxy else None
+    bot = Bot(token=_require_token(settings.bot_token), session=session)
     await _configure_menu_and_commands(bot, settings)
     dp = Dispatcher()
     db = Db()

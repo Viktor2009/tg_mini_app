@@ -76,6 +76,8 @@ python -c "import tg_mini_app; print('ok')"
 - Заполните **`BOT_TOKEN`**, **`BASE_URL`**, **`OPERATOR_CHAT_ID`** и остальное по комментариям в **`.env.example`**.
 - Файл **`.env` в Git не коммитится** (см. **`.gitignore`**).
 
+Если на VPS Telegram API недоступен (в логах `TelegramNetworkError` / `Request timeout error`) — добавьте в `.env` переменную **`TELEGRAM_PROXY`**. Примеры строк и формат (http/socks5) есть в `.env.example`.
+
 Минимум для продакшена (пример значений):
 
 ```env

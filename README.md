@@ -41,6 +41,8 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 
 Дальше заполните **`BOT_TOKEN`**, **`BASE_URL`**, при необходимости **`OPERATOR_CHAT_ID`**, токены панелей — подсказки в **`.env.example`** в корне репозитория. Секреты в Git не коммитятся (см. **`.gitignore`**).
 
+Если бот/уведомления “молчат”, а в логах на VPS есть `TelegramNetworkError` / `Request timeout error` (Telegram API недоступен с сервера), используйте **`TELEGRAM_PROXY`** в `.env` — примеры есть в `.env.example`.
+
 ---
 
 ## Этап 4. Запуск на ПК (два процесса)

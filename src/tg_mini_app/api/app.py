@@ -60,8 +60,13 @@ def create_app() -> FastAPI:
         if settings.bot_token.strip():
             # local import to keep API start lightweight
             from aiogram import Bot
+            from aiogram.client.session.aiohttp import AiohttpSession
 
-            _app.state.bot = Bot(token=settings.bot_token)
+            session = None
+            proxy = (settings.telegram_proxy or "").strip()
+            if proxy:
+                session = AiohttpSession(proxy=proxy)
+            _app.state.bot = Bot(token=settings.bot_token, session=session)
 
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)

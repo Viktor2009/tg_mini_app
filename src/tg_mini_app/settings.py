@@ -32,6 +32,16 @@ class Settings(BaseSettings):
     operator_username: str = Field(default="@Viktor5965", alias="OPERATOR_USERNAME")
     operator_chat_id: int | None = Field(default=None, alias="OPERATOR_CHAT_ID")
 
+    telegram_proxy: str = Field(
+        default="",
+        alias="TELEGRAM_PROXY",
+        description=(
+            "Proxy для исходящих запросов к Telegram API (aiogram). "
+            "Примеры: http://host:port или socks5://user:pass@host:port. "
+            "Пусто — без прокси."
+        ),
+    )
+
     operator_panel_token: str = Field(
         default="",
         alias="OPERATOR_PANEL_TOKEN",
@@ -87,6 +97,13 @@ class Settings(BaseSettings):
     @field_validator("telegram_webapp_secret", mode="before")
     @classmethod
     def _strip_telegram_webapp_secret(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+    @field_validator("telegram_proxy", mode="before")
+    @classmethod
+    def _strip_telegram_proxy(cls, value: object) -> object:
         if isinstance(value, str):
             return value.strip()
         return value
